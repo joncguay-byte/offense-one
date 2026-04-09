@@ -1,4 +1,4 @@
-import type { DraftNarrativeRequest, JobRecord, KnownSpeakerHint, NotificationRecord } from "@scene-report/shared";
+import type { DraftNarrativeRequest, JobRecord, KnownSpeakerHint, NotificationRecord } from "./shared-types";
 
 const API_BASE_URL = "http://localhost:4000/api";
 let sessionToken: string | null = null;

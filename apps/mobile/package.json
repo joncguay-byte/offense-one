@@ -10,7 +10,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@scene-report/shared": "0.1.0",
     "expo": "~54.0.33",
     "expo-audio": "~1.1.1",
     "expo-auth-session": "~7.0.10",

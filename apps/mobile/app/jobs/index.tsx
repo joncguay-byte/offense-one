@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
-import type { JobRecord } from "@scene-report/shared";
+import type { JobRecord } from "../../src/lib/shared-types";
 import { EmptyState, HeroCard, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { formatDateTime, formatJobType, theme } from "../../src/ui/theme";
 

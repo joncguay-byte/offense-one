@@ -1,4 +1,4 @@
-import type { DraftNarrativeRequest } from "@scene-report/shared";
+import type { DraftNarrativeRequest } from "../lib/shared-types";
 import {
   assignIncidentSupervisor,
   createIncident,

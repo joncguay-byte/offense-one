@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type { JobRecord, NotificationRecord } from "@scene-report/shared";
+import type { JobRecord, NotificationRecord } from "./src/lib/shared-types";
 import AudioCaptureScreen from "./app/capture/audio";
 import CameraCaptureScreen from "./app/capture/camera";
 import NewIncidentScreen from "./app/incident/new";
