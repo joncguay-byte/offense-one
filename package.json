@@ -12,9 +12,9 @@
     "build": "npm run build --workspaces",
     "lint": "npm run lint --workspaces",
     "typecheck": "npm run typecheck --workspaces",
-    "build:android:trial": "eas build --platform android --profile preview",
-    "build:android:store": "eas build --platform android --profile production",
-    "build:ios:store": "eas build --platform ios --profile production"
+    "build:android:trial": "cd apps/mobile && eas build --platform android --profile preview",
+    "build:android:store": "cd apps/mobile && eas build --platform android --profile production",
+    "build:ios:store": "cd apps/mobile && eas build --platform ios --profile production"
   },
   "devDependencies": {
     "eas-cli": "^18.5.0"
