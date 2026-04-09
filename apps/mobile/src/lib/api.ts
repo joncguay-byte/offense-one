@@ -1,0 +1,241 @@
+import type { DraftNarrativeRequest, JobRecord, KnownSpeakerHint, NotificationRecord } from "@scene-report/shared";
+
+const API_BASE_URL = "http://localhost:4000/api";
+let sessionToken: string | null = null;
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  role: "OFFICER" | "SUPERVISOR" | "ADMIN";
+  fullName: string;
+  badgeNumber?: string | null;
+};
+
+export type VoiceProfileRecord = {
+  userId: string;
+  displayName: string;
+  evidencePath: string;
+  updatedAt: string;
+};
+
+export type IncidentRecord = {
+  id: string;
+  caseNumber: string;
+  title: string;
+  status: "DRAFT" | "REVIEW" | "APPROVED" | "EXPORTED";
+  location?: string | null;
+  occurredAt: string;
+  createdById: string;
+  assignedSupervisorId?: string | null;
+  createdBy: AuthUser;
+  assignedSupervisor?: AuthUser | null;
+  participants: Array<{ id: string; label: string; displayName?: string | null; speakerKey: string }>;
+  transcriptDrafts: Array<{ id: string; rawText: string; diarizedJson: string }>;
+  evidenceItems?: Array<{
+    id: string;
+    type: "AUDIO" | "IMAGE" | "VIDEO";
+    mimeType: string;
+    path: string;
+    metadataJson?: string | null;
+  }>;
+  generatedReports: Array<{
+    id: string;
+    body: string;
+    status: "PENDING_REVIEW" | "OFFICER_EDITED" | "APPROVED" | "REJECTED";
+    reviewNotes?: string | null;
+    citationsJson?: string | null;
+    confidenceJson?: string | null;
+  }>;
+};
+
+export function setSessionToken(token: string | null) {
+  sessionToken = token;
+}
+
+export function getSessionToken() {
+  return sessionToken;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      ...(init?.headers || {})
+    },
+    ...init
+  });
+
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export function login(email: string, password: string) {
+  return request<{ token: string; user: AuthUser }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password })
+  });
+}
+
+export function getCurrentUser() {
+  return request<{ user: AuthUser }>("/auth/me");
+}
+
+export type CreateIncidentPayload = {
+  caseNumber: string;
+  title: string;
+  location?: string;
+  occurredAt: string;
+  createdById?: string;
+};
+
+export function createIncident(payload: CreateIncidentPayload) {
+  return request<IncidentRecord>("/incidents", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function assignIncidentSupervisor(incidentId: string, assignedSupervisorId: string) {
+  return request<IncidentRecord>(`/incidents/${incidentId}/assign-supervisor`, {
+    method: "PATCH",
+    body: JSON.stringify({ assignedSupervisorId })
+  });
+}
+
+export function listIncidents() {
+  return request<IncidentRecord[]>("/incidents");
+}
+
+export function ingestIncidentAudio(
+  incidentId: string,
+  payload?: { knownSpeakers?: KnownSpeakerHint[]; referenceEvidenceId?: string }
+) {
+  return request<{ jobId: string; status: string }>(`/incidents/${incidentId}/ingest-audio`, {
+    method: "POST",
+    body: JSON.stringify(payload || {})
+  });
+}
+
+export function generateIncidentReport(incidentId: string, payload: DraftNarrativeRequest) {
+  return request<{ jobId: string; status: string }>(`/incidents/${incidentId}/generate-report`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function renameParticipant(participantId: string, payload: { label: string; displayName?: string }) {
+  return request(`/participants/${participantId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function uploadEvidenceFile(payload: {
+  incidentId: string;
+  type: "AUDIO" | "IMAGE" | "VIDEO";
+  uri: string;
+  name: string;
+  mimeType: string;
+  capturedAt?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const formData = new FormData();
+  formData.append("type", payload.type);
+  formData.append("capturedAt", payload.capturedAt || new Date().toISOString());
+  if (payload.metadata) {
+    formData.append("metadata", JSON.stringify(payload.metadata));
+  }
+  formData.append("file", {
+    uri: payload.uri,
+    name: payload.name,
+    type: payload.mimeType
+  } as never);
+
+  return request(`/incidents/${payload.incidentId}/upload-evidence`, {
+    method: "POST",
+    body: formData
+  });
+}
+
+export function reviewReport(
+  reportId: string,
+  payload: { action: "approve" | "reject" | "edit"; body?: string; reviewNotes?: string }
+) {
+  return request<{ report: IncidentRecord["generatedReports"][number]; exportJobId?: string }>(`/reports/${reportId}/review`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getJob(jobId: string) {
+  return request<JobRecord>(`/jobs/${jobId}`);
+}
+
+export function listJobs(params?: { incidentId?: string; status?: JobRecord["status"]; take?: number }) {
+  const searchParams = new URLSearchParams();
+  if (params?.incidentId) {
+    searchParams.set("incidentId", params.incidentId);
+  }
+  if (params?.status) {
+    searchParams.set("status", params.status);
+  }
+  if (params?.take) {
+    searchParams.set("take", String(params.take));
+  }
+
+  const query = searchParams.toString();
+  return request<JobRecord[]>(`/jobs${query ? `?${query}` : ""}`);
+}
+
+export function listSupervisors() {
+  return request<AuthUser[]>("/users/supervisors");
+}
+
+export function registerDevicePushToken(payload: { provider: "EXPO" | "APNS" | "FCM"; token: string }) {
+  return request("/users/me/push-tokens", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getMyVoiceProfile() {
+  return request<{ hasProfile: boolean; profile?: VoiceProfileRecord | null }>("/users/me/voice-profile");
+}
+
+export async function uploadMyVoiceProfile(payload: {
+  uri: string;
+  name: string;
+  mimeType: string;
+}) {
+  const formData = new FormData();
+  formData.append("file", {
+    uri: payload.uri,
+    name: payload.name,
+    type: payload.mimeType
+  } as never);
+
+  return request<{ hasProfile: boolean; profile?: VoiceProfileRecord | null }>("/users/me/voice-profile", {
+    method: "POST",
+    body: formData
+  });
+}
+
+export function deleteMyVoiceProfile() {
+  return request<{ hasProfile: boolean; deleted?: boolean }>("/users/me/voice-profile", {
+    method: "DELETE"
+  });
+}
+
+export function listNotifications(take = 30) {
+  return request<NotificationRecord[]>(`/notifications?take=${take}`);
+}
+
+export function markNotificationRead(notificationId: string) {
+  return request<NotificationRecord>(`/notifications/${notificationId}/read`, {
+    method: "PATCH"
+  });
+}

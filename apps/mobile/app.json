@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Offense One",
+    "slug": "offense-one",
+    "entryPoint": "./index.js",
+    "scheme": "offense-one",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f6f3ee",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "splash": {
+      "backgroundColor": "#101922",
+      "resizeMode": "contain"
+    },
+    "androidStatusBar": {
+      "backgroundColor": "#101922",
+      "barStyle": "light-content"
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#f6f3ee",
+      "barStyle": "dark-content"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "buildNumber": "1",
+      "infoPlist": {
+        "UIViewControllerBasedStatusBarAppearance": false
+      },
+      "bundleIdentifier": "com.offenseone.mobile"
+    },
+    "android": {
+      "package": "com.offenseone.mobile",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "plugins": [
+      "expo-notifications",
+      "expo-camera",
+      "expo-audio",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "oidcIssuerUrl": "http://127.0.0.1:8080/realms/offense-one",
+      "oidcClientId": "offense-one-mobile",
+      "oidcAudience": "offense-one-api",
+      "eas": {
+        "projectId": "2ba49ef8-21d1-45e0-873b-13fa0aa86b4a"
+      }
+    },
+    "owner": "jonaso41"
+  }
+}

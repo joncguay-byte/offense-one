@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String      @id @default(cuid())
+  email       String      @unique
+  fullName    String
+  badgeNumber String?
+  role        UserRole    @default(OFFICER)
+  passwordHash String
+  createdAt   DateTime    @default(now())
+  incidents   Incident[]  @relation("IncidentCreatedBy")
+  audits      AuditLog[]
+  sessions    Session[]
+  reviewedReports GeneratedReport[] @relation("ReportReviewedBy")
+  notifications Notification[]
+  assignedIncidents Incident[] @relation("IncidentAssignedSupervisor")
+  pushTokens PushToken[]
+}
+
+model Incident {
+  id                String           @id @default(cuid())
+  caseNumber        String           @unique
+  title             String
+  status            IncidentStatus   @default(DRAFT)
+  location          String?
+  occurredAt        DateTime
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  createdById       String
+  assignedSupervisorId String?
+  createdBy         User             @relation("IncidentCreatedBy", fields: [createdById], references: [id])
+  assignedSupervisor User?           @relation("IncidentAssignedSupervisor", fields: [assignedSupervisorId], references: [id])
+  evidenceItems     EvidenceItem[]
+  transcriptDrafts  TranscriptDraft[]
+  generatedReports  GeneratedReport[]
+  participants      Participant[]
+  jobs              Job[]
+}
+
+model Participant {
+  id             String   @id @default(cuid())
+  incidentId     String
+  label          String
+  displayName    String?
+  speakerKey     String
+  createdAt      DateTime @default(now())
+  incident       Incident @relation(fields: [incidentId], references: [id])
+
+  @@unique([incidentId, speakerKey], name: "incidentId_speakerKey")
+}
+
+model EvidenceItem {
+  id            String       @id @default(cuid())
+  incidentId    String
+  type          EvidenceType
+  mimeType      String
+  path          String
+  capturedAt    DateTime?
+  metadataJson  String?
+  createdAt     DateTime     @default(now())
+  incident      Incident     @relation(fields: [incidentId], references: [id])
+}
+
+model TranscriptDraft {
+  id               String   @id @default(cuid())
+  incidentId       String
+  sourceEvidenceId String?
+  language         String   @default("en")
+  rawText          String
+  diarizedJson     String
+  createdAt        DateTime @default(now())
+  incident         Incident @relation(fields: [incidentId], references: [id])
+}
+
+model GeneratedReport {
+  id             String          @id @default(cuid())
+  incidentId     String
+  version        Int             @default(1)
+  reportType     ReportType      @default(NARRATIVE)
+  status         GeneratedStatus @default(PENDING_REVIEW)
+  body           String
+  reviewNotes    String?
+  citationsJson  String?
+  confidenceJson String?
+  createdAt      DateTime        @default(now())
+  reviewedAt     DateTime?
+  reviewedById   String?
+  exportedAt     DateTime?
+  exportPayloadJson String?
+  incident       Incident        @relation(fields: [incidentId], references: [id])
+  reviewedBy     User?           @relation("ReportReviewedBy", fields: [reviewedById], references: [id])
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  userId      String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  revokedAt   DateTime?
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model Job {
+  id            String     @id @default(cuid())
+  incidentId    String
+  type          JobType
+  status        JobStatus  @default(PENDING)
+  payloadJson   String
+  resultJson    String?
+  errorMessage  String?
+  attempts      Int        @default(0)
+  createdAt     DateTime   @default(now())
+  startedAt     DateTime?
+  completedAt   DateTime?
+  incident      Incident   @relation(fields: [incidentId], references: [id])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  body        String
+  type        NotificationType
+  readAt      DateTime?
+  metadataJson String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model PushToken {
+  id          String   @id @default(cuid())
+  userId      String
+  provider    PushProvider
+  token       String   @unique
+  createdAt   DateTime @default(now())
+  lastUsedAt  DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  action       String
+  entityType   String
+  entityId     String
+  summary      String
+  metadataJson String?
+  createdAt    DateTime @default(now())
+  user         User?    @relation(fields: [userId], references: [id])
+}
+
+enum UserRole {
+  OFFICER
+  SUPERVISOR
+  ADMIN
+}
+
+enum IncidentStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  EXPORTED
+}
+
+enum EvidenceType {
+  AUDIO
+  IMAGE
+  VIDEO
+}
+
+enum ReportType {
+  NARRATIVE
+  WITNESS_SUMMARY
+  SCENE_SUMMARY
+}
+
+enum GeneratedStatus {
+  PENDING_REVIEW
+  OFFICER_EDITED
+  APPROVED
+  REJECTED
+}
+
+enum JobType {
+  INGEST_AUDIO
+  GENERATE_REPORT
+  EXPORT_REPORT
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum NotificationType {
+  JOB_COMPLETED
+  JOB_FAILED
+  REPORT_APPROVED
+  REPORT_EXPORTED
+}
+
+enum PushProvider {
+  EXPO
+  APNS
+  FCM
+}
