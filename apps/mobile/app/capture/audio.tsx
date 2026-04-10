@@ -171,7 +171,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
   }, [currentUser]);
 
   useEffect(() => {
-    if (!selectedIncidentId?.startsWith("local-")) {
+    if (!selectedIncidentId) {
       setLocalRecordings([]);
       return;
     }
@@ -227,7 +227,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
       await recorder.stop();
       const uri = recorder.uri || recorderState.url || "";
       setRecordingUri(uri);
-      if (uri && selectedIncidentId?.startsWith("local-")) {
+      if (uri && selectedIncidentId) {
         const saved = await saveLocalAudioEvidence(selectedIncidentId, uri, currentUser?.fullName);
         await onEvidenceSaved?.();
         const records = await loadLocalEvidence(selectedIncidentId);
@@ -251,7 +251,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
     try {
       await deleteLocalEvidence(recordId);
       await onEvidenceSaved?.();
-      if (selectedIncidentId?.startsWith("local-")) {
+      if (selectedIncidentId) {
         const records = await loadLocalEvidence(selectedIncidentId);
         setLocalRecordings(records.filter((record) => record.type === "AUDIO"));
       }

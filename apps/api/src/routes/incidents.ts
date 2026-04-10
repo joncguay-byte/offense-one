@@ -28,10 +28,12 @@ const draftReportSchema = z.object({
   objective: z.string().optional(),
   includeSceneSummary: z.boolean().default(true),
   includeWitnessSummary: z.boolean().default(true),
-  includeCallForServiceContext: z.boolean().default(true)
+  includeCallForServiceContext: z.boolean().default(true),
+  selectedEvidenceIds: z.array(z.string()).optional()
 });
 
 const ingestAudioSchema = z.object({
+  evidenceId: z.string().optional(),
   knownSpeakers: z.array(z.object({
     speakerKey: z.string().optional(),
     displayName: z.string().min(1),
@@ -143,7 +145,8 @@ export const incidentRoutes: FastifyPluginAsync = async (app) => {
     const latestAudio = await prisma.evidenceItem.findFirst({
       where: {
         incidentId: params.incidentId,
-        type: "AUDIO"
+        type: "AUDIO",
+        ...(body.evidenceId ? { id: body.evidenceId } : {})
       },
       orderBy: {
         createdAt: "desc"

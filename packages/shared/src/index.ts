@@ -36,6 +36,7 @@ export type DraftNarrativeRequest = {
   includeSceneSummary: boolean;
   includeWitnessSummary: boolean;
   includeCallForServiceContext?: boolean;
+  selectedEvidenceIds?: string[];
 };
 
 export type JobRecord = {

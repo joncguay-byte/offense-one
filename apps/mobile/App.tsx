@@ -19,7 +19,11 @@ import {
   registerPushToken,
   signInOidc,
   signInOfficer,
-  signInSupervisor
+  signInSupervisor,
+  generateDraftNarrative,
+  getJobStatus,
+  ingestDraftAudioEvidence,
+  uploadDraftEvidence
 } from "./src/features/reporting";
 import { setSessionToken, type AuthUser, type IncidentRecord } from "./src/lib/api";
 import {
@@ -292,22 +296,94 @@ export default function App() {
     );
   }
 
-  function generateEventDraft() {
+  async function waitForDraftJob(jobId: string, label: string) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const job = await getJobStatus(jobId);
+      if (job.status === "COMPLETED") {
+        return job;
+      }
+      if (job.status === "FAILED") {
+        throw new Error(job.errorMessage || `${label} failed.`);
+      }
+      setStatus(`${label} ${job.status.toLowerCase()}...`);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+
+    throw new Error(`${label} is still running. Check Jobs for the final result.`);
+  }
+
+  async function generateEventDraft() {
     if (!selectedIncident) {
       setStatus("Create or select an event first.");
       return;
     }
 
     const selectedEvidence = localEvidence.filter((record) => record.selectedForDraft);
-    const body = [
-      `I responded to ${selectedIncident.title}${selectedIncident.location ? ` at ${selectedIncident.location}` : ""}.`,
-      selectedEvidence.length > 0 ? `${selectedEvidence.length} selected evidence item(s) were used for this draft.` : "No recordings or photos were selected for this draft.",
-      draftNotes ? `Notes: ${draftNotes}` : ""
-    ]
-      .filter(Boolean)
-      .join(" ");
-    generateLocalReport(selectedIncident.id, body, draftNotes);
-    setStatus("Draft narrative generated for this event.");
+    const selectedAudio = selectedEvidence.filter((record) => record.type === "AUDIO");
+    if (selectedEvidence.length === 0 || selectedAudio.length === 0) {
+      setStatus("Select at least one audio recording for AI narrative drafting. Photos and videos can be added as supporting context.");
+      return;
+    }
+
+    if (standaloneMode || selectedIncident.id.startsWith("local-")) {
+      generateLocalReport(
+        selectedIncident.id,
+        [
+          "AI narrative drafting is not available in local-only mode.",
+          "To interpret the selected conversation and scene imagery, Offense One needs the hosted API running with an OpenAI API key so audio can be transcribed/diarized and photos can be analyzed.",
+          "",
+          `Selected evidence ready for drafting: ${selectedEvidence.map((record) => record.fileName).join(", ")}`,
+          draftNotes ? `Officer notes: ${draftNotes}` : ""
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        draftNotes
+      );
+      setStatus("Selected evidence is ready, but AI interpretation requires the hosted API/OpenAI setup.");
+      return;
+    }
+
+    try {
+      setStatus("Uploading selected evidence for AI interpretation...");
+      const uploadedEvidence = [];
+      for (const record of selectedEvidence) {
+        if (record.type === "VIDEO") {
+          continue;
+        }
+        uploadedEvidence.push(
+          await uploadDraftEvidence({
+            incidentId: selectedIncident.id,
+            type: record.type,
+            uri: record.savedUri,
+            fileName: record.fileName,
+            currentUser,
+            label: record.label
+          })
+        );
+      }
+
+      const uploadedAudio = uploadedEvidence.filter((record) => record.type === "AUDIO");
+      for (const audio of uploadedAudio) {
+        const ingestJob = await ingestDraftAudioEvidence(selectedIncident.id, audio.id, currentUser);
+        await waitForDraftJob(ingestJob.jobId, `Transcribing ${audio.path.split(/[\\/]/).pop() || "audio"}`);
+      }
+
+      setStatus("Generating AI narrative from selected transcript and scene context...");
+      const reportJob = await generateDraftNarrative(selectedIncident.id, {
+        incidentTitle: selectedIncident.title,
+        officerPerspective: currentUser?.fullName || "Reporting officer",
+        objective: draftNotes || "Generate a neutral police narrative report draft from selected evidence.",
+        includeSceneSummary: uploadedEvidence.some((record) => record.type === "IMAGE"),
+        includeWitnessSummary: true,
+        includeCallForServiceContext: true,
+        selectedEvidenceIds: uploadedEvidence.map((record) => record.id)
+      });
+      await waitForDraftJob(reportJob.jobId, "Generating narrative");
+      await refreshIncidents();
+      setStatus("AI draft narrative generated from the selected audio and imagery. Review before use.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to generate draft narrative.");
+    }
   }
 
   async function completeSignIn(user: AuthUser, modeLabel: string) {
@@ -586,7 +662,7 @@ export default function App() {
   }, [selectedIncidentId]);
 
   useEffect(() => {
-    if (!selectedIncidentId?.startsWith("local-")) {
+    if (!selectedIncidentId) {
       setLocalEvidence([]);
       return;
     }
@@ -597,7 +673,7 @@ export default function App() {
   }, [selectedIncidentId, status]);
 
   async function refreshLocalEvidence() {
-    if (!selectedIncidentId?.startsWith("local-")) {
+    if (!selectedIncidentId) {
       return;
     }
 

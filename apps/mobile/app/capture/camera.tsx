@@ -50,9 +50,9 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
 
     setBusy(true);
     try {
+      const label = captureKind === "CALL_FOR_SERVICE" ? "Call For Service" : "Scene Photo";
+      const saved = await saveLocalImageEvidence(selectedIncidentId, photoUri, label, currentUser?.fullName);
       if (selectedIncidentId.startsWith("local-")) {
-        const label = captureKind === "CALL_FOR_SERVICE" ? "Call For Service" : "Scene Photo";
-        const saved = await saveLocalImageEvidence(selectedIncidentId, photoUri, label, currentUser?.fullName);
         await onUploaded();
         setStatus(`${label} saved to this incident as ${saved.fileName}.`);
         return;
@@ -64,7 +64,7 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
         await attachSceneImage(selectedIncidentId, photoUri);
       }
       await onUploaded();
-      setStatus(captureKind === "CALL_FOR_SERVICE" ? "Call-for-service image uploaded successfully." : "Scene image uploaded successfully.");
+      setStatus(captureKind === "CALL_FOR_SERVICE" ? "Call-for-service image saved and uploaded successfully." : "Scene image saved and uploaded successfully.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to upload photo.");
     } finally {
@@ -93,13 +93,9 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
       }
 
       setVideoUri(result.uri);
-      if (selectedIncidentId.startsWith("local-")) {
-        const saved = await saveLocalVideoEvidence(selectedIncidentId, result.uri, "Scene Video", currentUser?.fullName);
-        await onUploaded();
-        setStatus(`Scene video saved to this incident as ${saved.fileName}.`);
-      } else {
-        setStatus("Video captured locally. Backend video upload is not connected yet.");
-      }
+      const saved = await saveLocalVideoEvidence(selectedIncidentId, result.uri, "Scene Video", currentUser?.fullName);
+      await onUploaded();
+      setStatus(selectedIncidentId.startsWith("local-") ? `Scene video saved to this incident as ${saved.fileName}.` : `Scene video saved locally as ${saved.fileName}. Video AI interpretation is not connected yet.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to record video.");
     } finally {

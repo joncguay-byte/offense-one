@@ -23,7 +23,7 @@ import {
   uploadMyVoiceProfile
 } from "../lib/api";
 import { signInWithOidc } from "../lib/oidc";
-import { uploadEvidenceFile } from "../lib/api";
+import { uploadEvidenceFile, type EvidenceItemRecord } from "../lib/api";
 
 export async function signInOfficer() {
   const session = await login("officer@example.gov", "ChangeMe123!");
@@ -141,6 +141,59 @@ export async function attachSceneImage(incidentId: string, path: string) {
     metadata: {
       sourceKind: "SCENE"
     }
+  });
+}
+
+export async function uploadDraftEvidence(input: {
+  incidentId: string;
+  type: "AUDIO" | "IMAGE" | "VIDEO";
+  uri: string;
+  fileName: string;
+  currentUser?: AuthUser | null;
+  label?: string | null;
+}) {
+  const sourceKind = input.label?.toLowerCase().includes("call") ? "CALL_FOR_SERVICE" : "SCENE";
+  const mimeType =
+    input.type === "AUDIO"
+      ? "audio/m4a"
+      : input.type === "VIDEO"
+        ? "video/mp4"
+        : "image/jpeg";
+
+  return uploadEvidenceFile({
+    incidentId: input.incidentId,
+    type: input.type,
+    mimeType,
+    uri: input.uri,
+    name: input.fileName,
+    capturedAt: new Date().toISOString(),
+    metadata: {
+      sourceKind,
+      localLabel: input.label || null,
+      selectedForDraft: true,
+      knownOfficer: input.currentUser
+        ? {
+            id: input.currentUser.id,
+            displayName: input.currentUser.fullName,
+            badgeNumber: input.currentUser.badgeNumber || null
+          }
+        : undefined
+    }
+  }) as Promise<EvidenceItemRecord>;
+}
+
+export async function ingestDraftAudioEvidence(incidentId: string, evidenceId: string, currentUser?: AuthUser | null) {
+  return ingestIncidentAudio(incidentId, {
+    evidenceId,
+    knownSpeakers: currentUser
+      ? [
+          {
+            displayName: currentUser.fullName,
+            role: "OFFICER",
+            speakerKey: "speaker_1"
+          }
+        ]
+      : undefined
   });
 }
 

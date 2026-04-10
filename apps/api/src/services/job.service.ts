@@ -26,6 +26,7 @@ type GenerateReportPayload = {
   includeSceneSummary: boolean;
   includeWitnessSummary: boolean;
   includeCallForServiceContext?: boolean;
+  selectedEvidenceIds?: string[];
 };
 
 type IngestAudioPayload = {
@@ -77,6 +78,9 @@ async function processIngestAudio(jobId: string, incidentId: string, payload: In
   });
 
   const latestAudio = audioEvidence.find((item) => {
+    if (payload.evidenceId && item.id !== payload.evidenceId) {
+      return false;
+    }
     const metadata = parseEvidenceMetadata(item.metadataJson);
     return metadata.sourceKind !== "OFFICER_REFERENCE";
   });
@@ -166,19 +170,33 @@ async function processGenerateReport(jobId: string, incidentId: string, payload:
   const incident = await prisma.incident.findUniqueOrThrow({
     where: { id: incidentId },
     include: {
-      transcriptDrafts: { orderBy: { createdAt: "desc" }, take: 1 },
+      transcriptDrafts: { orderBy: { createdAt: "asc" } },
       evidenceItems: true
     }
   });
 
-  const transcriptRecord = incident.transcriptDrafts[0];
-  if (!transcriptRecord) {
+  const selectedEvidenceIds = new Set(payload.selectedEvidenceIds || []);
+  const transcriptRecords = selectedEvidenceIds.size > 0
+    ? incident.transcriptDrafts.filter((draft: { sourceEvidenceId?: string | null }) => draft.sourceEvidenceId && selectedEvidenceIds.has(draft.sourceEvidenceId))
+    : incident.transcriptDrafts.slice(-1);
+
+  if (transcriptRecords.length === 0) {
     throw new Error("No transcript draft is available for this incident.");
   }
 
-  const transcript = JSON.parse(transcriptRecord.diarizedJson) as Awaited<ReturnType<typeof diarizeAudioFromEvidence>>;
+  const transcripts = transcriptRecords.map((transcriptRecord: { diarizedJson: string }) =>
+    JSON.parse(transcriptRecord.diarizedJson) as Awaited<ReturnType<typeof diarizeAudioFromEvidence>>
+  );
+  const transcript = {
+    language: transcripts[0].language,
+    speakers: Array.from(
+      new Map(transcripts.flatMap((item) => item.speakers).map((speaker) => [speaker.speakerKey, speaker])).values()
+    ),
+    segments: transcripts.flatMap((item) => item.segments)
+  };
   const imageEvidence = incident.evidenceItems
     .filter((item) => item.type === "IMAGE")
+    .filter((item) => selectedEvidenceIds.size === 0 || selectedEvidenceIds.has(item.id))
     .map((item) => {
       const metadata = parseEvidenceMetadata(item.metadataJson);
       return {

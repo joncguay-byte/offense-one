@@ -48,6 +48,8 @@ export type IncidentRecord = {
   }>;
 };
 
+export type EvidenceItemRecord = NonNullable<IncidentRecord["evidenceItems"]>[number];
+
 export function setSessionToken(token: string | null) {
   sessionToken = token;
 }
@@ -112,7 +114,7 @@ export function listIncidents() {
 
 export function ingestIncidentAudio(
   incidentId: string,
-  payload?: { knownSpeakers?: KnownSpeakerHint[]; referenceEvidenceId?: string }
+  payload?: { evidenceId?: string; knownSpeakers?: KnownSpeakerHint[]; referenceEvidenceId?: string }
 ) {
   return request<{ jobId: string; status: string }>(`/incidents/${incidentId}/ingest-audio`, {
     method: "POST",
@@ -155,7 +157,7 @@ export async function uploadEvidenceFile(payload: {
     type: payload.mimeType
   } as never);
 
-  return request(`/incidents/${payload.incidentId}/upload-evidence`, {
+  return request<EvidenceItemRecord>(`/incidents/${payload.incidentId}/upload-evidence`, {
     method: "POST",
     body: formData
   });
