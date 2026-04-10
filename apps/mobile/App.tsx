@@ -59,7 +59,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [status, setStatus] = useState("Sign in to begin field capture.");
-  const [localMode, setLocalMode] = useState(false);
+  const [standaloneMode, setStandaloneMode] = useState(false);
   const [loginEmail, setLoginEmail] = useState("officer@example.gov");
   const [loginPassword, setLoginPassword] = useState("ChangeMe123!");
   const [loginRole, setLoginRole] = useState<LocalLoginRole>("OFFICER");
@@ -74,7 +74,7 @@ export default function App() {
   );
 
   async function refreshIncidents() {
-    if (!currentUser || localMode) {
+    if (!currentUser || standaloneMode) {
       return;
     }
 
@@ -86,7 +86,7 @@ export default function App() {
   }
 
   async function refreshJobs() {
-    if (!currentUser || localMode) {
+    if (!currentUser || standaloneMode) {
       return;
     }
 
@@ -98,7 +98,7 @@ export default function App() {
   }
 
   async function refreshNotifications() {
-    if (!currentUser || localMode) {
+    if (!currentUser || standaloneMode) {
       return;
     }
 
@@ -107,7 +107,7 @@ export default function App() {
   }
 
   async function refreshSupervisors() {
-    if (!currentUser || localMode) {
+    if (!currentUser || standaloneMode) {
       return;
     }
 
@@ -178,16 +178,16 @@ export default function App() {
                   reviewNotes: reviewNotes || null,
                   citationsJson: JSON.stringify([
                     {
-                      sourceType: "LOCAL_TRIAL",
+                      sourceType: "DEVICE_CAPTURE",
                       sourceId: incident.id,
-                      sourceLabel: "Local trial evidence",
-                      note: "Generated from locally captured trial context.",
+                      sourceLabel: "Device evidence",
+                      note: "Generated from device-captured context.",
                       excerpt: "Backend transcription and AI citations require hosted API setup."
                     }
                   ]),
                   confidenceJson: JSON.stringify({
                     overall: "low",
-                    notes: ["Local trial draft only. Connect the backend API for transcript-backed AI drafting."]
+                    notes: ["Device-generated draft. Connect the agency API for transcript-backed AI drafting."]
                   })
                 },
                 ...incident.generatedReports
@@ -199,7 +199,7 @@ export default function App() {
   }
 
   async function completeSignIn(user: AuthUser, modeLabel: string) {
-    setLocalMode(false);
+    setStandaloneMode(false);
     setCurrentUser(user);
     setScreen("audio");
     const expoToken = await registerForExpoPushToken();
@@ -215,7 +215,7 @@ export default function App() {
     const officer = getLocalUser("OFFICER");
     const supervisor = getLocalUser("SUPERVISOR");
 
-    setLocalMode(true);
+    setStandaloneMode(true);
     setCurrentUser(getLocalUser(userRole));
     setSupervisors([supervisor]);
     setIncidents([
@@ -239,7 +239,7 @@ export default function App() {
     setNotifications([]);
     setSelectedIncidentId("local-incident-1");
     setScreen("audio");
-    setStatus("Signed in locally. Recording, camera, settings, and review screens are available. Backend upload requires hosted API setup.");
+    setStatus("Signed in. Recording, camera, settings, and review screens are available. Cloud sync requires the agency API.");
   }
 
   async function persistLoginIfNeeded(role: LocalLoginRole) {
@@ -269,7 +269,7 @@ export default function App() {
       }
     } catch {
       if (!isLocalCredential(loginEmail, loginPassword, role)) {
-        setStatus("Login failed. For local trial use officer@example.gov or supervisor@example.gov with ChangeMe123!.");
+        setStatus("Login failed. Use officer@example.gov or supervisor@example.gov with ChangeMe123!, or connect agency login.");
         return;
       }
 
@@ -319,102 +319,6 @@ export default function App() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to sign in with Keycloak.");
     }
-  }
-
-  function launchDemoWalkthrough(role: "OFFICER" | "SUPERVISOR" = "OFFICER") {
-    const officer: AuthUser = {
-      id: "demo-officer-local",
-      email: "officer@example.gov",
-      role: "OFFICER",
-      fullName: "Demo Officer",
-      badgeNumber: "1001"
-    };
-    const supervisor: AuthUser = {
-      id: "demo-supervisor-local",
-      email: "supervisor@example.gov",
-      role: "SUPERVISOR",
-      fullName: "Demo Supervisor",
-      badgeNumber: "2001"
-    };
-
-    setLocalMode(true);
-    setCurrentUser(role === "SUPERVISOR" ? supervisor : officer);
-    setSupervisors([supervisor]);
-    setIncidents([
-      {
-        id: "local-incident-demo-1",
-        caseNumber: "2026-000123",
-        title: "Burglary Report",
-        status: "REVIEW",
-        location: "12 Main St",
-        occurredAt: new Date().toISOString(),
-        createdById: officer.id,
-        assignedSupervisorId: supervisor.id,
-        createdBy: officer,
-        assignedSupervisor: supervisor,
-        participants: [
-          { id: "p1", label: "Caller", displayName: "Caller", speakerKey: "speaker_1" },
-          { id: "p2", label: "Witness", displayName: "Witness", speakerKey: "speaker_2" }
-        ],
-        transcriptDrafts: [
-          {
-            id: "t1",
-            rawText: "Caller reported forced entry. Witness saw a person leave on foot.",
-            diarizedJson: JSON.stringify({
-              segments: [
-                { speakerKey: "speaker_1", startMs: 0, endMs: 4200, text: "I came home and found the back door open." },
-                { speakerKey: "speaker_2", startMs: 5000, endMs: 9100, text: "I saw someone run toward the alley." }
-              ]
-            })
-          }
-        ],
-        generatedReports: [
-          {
-            id: "r1",
-            body: "Officers responded to a reported burglary. The reporting party stated they returned home and found the back door open. A witness reported seeing an individual run toward the alley.",
-            status: "PENDING_REVIEW",
-            reviewNotes: null
-          }
-        ]
-      }
-    ]);
-    setJobs([
-      {
-        id: "job-demo-1",
-        type: "INGEST_AUDIO",
-        status: "COMPLETED",
-        incidentId: "local-incident-demo-1",
-        createdAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-        resultJson: "{\"transcriptDraftId\":\"t1\"}"
-      },
-      {
-        id: "job-demo-2",
-        type: "GENERATE_REPORT",
-        status: "COMPLETED",
-        incidentId: "local-incident-demo-1",
-        createdAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-        resultJson: "{\"reportId\":\"r1\"}"
-      }
-    ]);
-    setNotifications([
-      {
-        id: "n1",
-        title: "Generate Report completed",
-        body: "2026-000123 - Burglary Report: draft narrative completed successfully.",
-        type: "JOB_COMPLETED",
-        createdAt: new Date().toISOString(),
-        readAt: null
-      }
-    ]);
-    setSelectedIncidentId("local-incident-demo-1");
-    setScreen("audio");
-    setStatus(
-      role === "SUPERVISOR"
-        ? "Supervisor demo session loaded locally. Backend services are bypassed."
-        : "Officer demo session loaded locally. Backend services are bypassed."
-    );
   }
 
   useEffect(() => {
@@ -519,14 +423,14 @@ export default function App() {
                 <AppButton label="Keycloak / Agency Login" onPress={signInWithKeycloak} disabled={loginBusy} variant="ghost" />
               </View>
               <Text style={styles.loginHint}>
-                Trial credentials: officer@example.gov or supervisor@example.gov with password ChangeMe123!. Hosted agency login requires the backend API to be deployed.
+                Credentials: officer@example.gov or supervisor@example.gov with password ChangeMe123!. Agency login requires the backend API to be deployed.
               </Text>
             </View>
           </SectionCard>
         ) : (
           <SectionCard title="Session" subtitle={status}>
             <View style={styles.identityRow}>
-              <Tag label={localMode ? "Local trial mode" : "Live mode"} active />
+              <Tag label={standaloneMode ? "Standalone mode" : "Live mode"} active />
               <Tag label={`${currentUser.role} / ${currentUser.fullName}`} />
               {currentUser.badgeNumber ? <Tag label={`Badge ${currentUser.badgeNumber}`} /> : null}
             </View>
@@ -625,7 +529,7 @@ export default function App() {
             currentUser={currentUser}
             incidents={incidents}
             supervisors={supervisors}
-            localMode={localMode}
+            localMode={standaloneMode}
             onCreated={refreshIncidents}
             onLocalCreated={createLocalIncident}
             onLocalAssigned={assignLocalSupervisor}

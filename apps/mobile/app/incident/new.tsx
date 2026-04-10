@@ -52,7 +52,7 @@ export default function NewIncidentScreen({
         setCaseNumber("");
         setTitle("");
         setLocation("");
-        setStatus("Local trial incident created.");
+        setStatus("Incident created.");
         return;
       }
 

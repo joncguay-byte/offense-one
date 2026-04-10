@@ -272,7 +272,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
     try {
       if (selectedIncidentId.startsWith("local-")) {
         await onUploaded();
-        setStatus("Audio saved to the local trial incident. Hosted transcription requires the backend API.");
+        setStatus("Audio saved to this incident. Cloud transcription requires the agency API.");
         return;
       }
 
@@ -297,7 +297,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
       if (selectedIncidentId.startsWith("local-")) {
         await onUploaded();
         setReferenceReady(true);
-        setStatus("Officer voice reference saved locally for this trial incident.");
+        setStatus("Officer voice reference saved for this incident.");
         return;
       }
 
@@ -322,7 +322,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
     try {
       if (currentUser.id.startsWith("local-")) {
         setProfileReady(true);
-        setStatus("Reusable officer voice profile saved locally for this trial session.");
+        setStatus("Reusable officer voice profile saved on this device.");
         return;
       }
 

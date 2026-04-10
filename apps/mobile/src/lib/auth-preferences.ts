@@ -16,7 +16,7 @@ export const localOfficer: AuthUser = {
   id: "local-officer",
   email: "officer@example.gov",
   role: "OFFICER",
-  fullName: "Officer Trial User",
+  fullName: "Officer User",
   badgeNumber: "1001"
 };
 
@@ -24,7 +24,7 @@ export const localSupervisor: AuthUser = {
   id: "local-supervisor",
   email: "supervisor@example.gov",
   role: "SUPERVISOR",
-  fullName: "Supervisor Trial User",
+  fullName: "Supervisor User",
   badgeNumber: "2001"
 };
 

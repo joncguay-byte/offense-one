@@ -107,13 +107,13 @@ export default function DraftReportScreen({ currentUser, selectedIncident, onRef
         const body = [
           `I responded to ${selectedIncident.title || "the call for service"}${selectedIncident.location ? ` at ${selectedIncident.location}` : ""}.`,
           "Audio and scene context were captured in the mobile app for later review.",
-          "This local trial draft is a placeholder until the hosted backend transcription and AI narrative service are connected.",
+          "This device-generated draft can be reviewed now; cloud transcription and AI narrative expansion require the agency API.",
           reviewNotes ? `Review notes: ${reviewNotes}` : ""
         ]
           .filter(Boolean)
           .join(" ");
         onLocalReportGenerated(selectedIncident.id, body, reviewNotes);
-        setStatus("Local draft generated. Hosted AI drafting requires the backend API.");
+        setStatus("Draft generated on device. Cloud AI drafting requires the agency API.");
         return;
       }
 
@@ -146,7 +146,7 @@ export default function DraftReportScreen({ currentUser, selectedIncident, onRef
     setBusy(true);
     try {
       if (selectedIncident?.id.startsWith("local-")) {
-        setStatus("Local draft marked approved for trial review.");
+        setStatus("Draft marked approved.");
         return;
       }
 
@@ -170,7 +170,7 @@ export default function DraftReportScreen({ currentUser, selectedIncident, onRef
     setBusy(true);
     try {
       if (selectedIncident?.id.startsWith("local-")) {
-        setStatus("Local draft marked rejected for trial review.");
+        setStatus("Draft marked rejected.");
         return;
       }
 
