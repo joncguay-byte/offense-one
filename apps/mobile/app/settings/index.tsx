@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { createAudioPlayer } from "expo-audio";
+import * as Updates from "expo-updates";
 import { AppButton, HeroCard, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { loadRecordingCueSettings, saveRecordingCueSettings, type RecordingCueSettings, type RecordingCueVolume } from "../../src/lib/audio-settings";
 import { loadLocalAccountProfiles, type LocalAccountProfile } from "../../src/lib/auth-preferences";
@@ -31,6 +32,7 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
   const [accountBadge, setAccountBadge] = useState(currentUser?.badgeNumber || "");
   const [accountPassword, setAccountPassword] = useState("");
   const [status, setStatus] = useState("Loading saved preferences...");
+  const [updateStatus, setUpdateStatus] = useState(Updates.isEnabled ? "Updates are enabled for installed builds." : "Updates are unavailable in Expo Go/dev mode.");
 
   useEffect(() => {
     loadRecordingCueSettings()
@@ -58,7 +60,7 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
 
     loadLocalAccountProfiles()
       .then((profiles) => {
-        const profile = profiles[currentUser.role === "SUPERVISOR" ? "SUPERVISOR" : "OFFICER"];
+        const profile = profiles[currentUser.role === "ADMIN" ? "ADMIN" : currentUser.role === "SUPERVISOR" ? "SUPERVISOR" : "OFFICER"];
         setAccountName(profile.fullName);
         setAccountEmail(profile.email);
         setAccountBadge(profile.badgeNumber || "");
@@ -106,13 +108,36 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
     }
 
     await onLocalAccountUpdated({
-      role: currentUser.role === "SUPERVISOR" ? "SUPERVISOR" : "OFFICER",
+      role: currentUser.role === "ADMIN" ? "ADMIN" : currentUser.role === "SUPERVISOR" ? "SUPERVISOR" : "OFFICER",
       fullName: accountName.trim(),
       email: accountEmail.trim(),
       password: accountPassword,
       badgeNumber: accountBadge.trim() || null
     });
     setStatus("Account name, username, and password saved on this device.");
+  }
+
+  async function checkForUpdates() {
+    if (!Updates.isEnabled) {
+      setUpdateStatus("In-app updates are not enabled in this development build. They work in EAS production/preview builds after EAS Update is configured.");
+      return;
+    }
+
+    setUpdateStatus("Checking for app update...");
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      if (!result.isAvailable) {
+        setUpdateStatus("No update is available right now.");
+        return;
+      }
+
+      setUpdateStatus("Update found. Downloading...");
+      await Updates.fetchUpdateAsync();
+      setUpdateStatus("Update downloaded. Restarting Offense One...");
+      await Updates.reloadAsync();
+    } catch (error) {
+      setUpdateStatus(error instanceof Error ? error.message : "Unable to check for updates.");
+    }
   }
 
   return (
@@ -195,6 +220,29 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
             variant="ghost"
             disabled={!settings.preferredInputUid}
           />
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Bluetooth and Speech Recognition" subtitle="Bluetooth inputs and speech recognition preferences live here instead of cluttering the recording screen.">
+        <View style={styles.tagRow}>
+          <Tag label={settings.preferredInputUid ? "Bluetooth/input saved" : "Use recorder to pick input"} tone={settings.preferredInputUid ? "success" : "warning"} active />
+          <Tag label="Officer speech recognition planned" tone="warning" />
+        </View>
+        <Text style={styles.preferenceValue}>
+          Bluetooth recording depends on whether Android or iOS exposes your earbuds as a microphone input. Speech recognition will use the signed-in officer profile when the transcription backend is connected.
+        </Text>
+      </SectionCard>
+
+      <SectionCard title="App Updates" subtitle={updateStatus}>
+        <View style={styles.tagRow}>
+          <Tag label={Updates.isEnabled ? "OTA ready" : "OTA unavailable here"} tone={Updates.isEnabled ? "success" : "warning"} active />
+          <Tag label={`Runtime: ${Updates.runtimeVersion || "not set"}`} />
+        </View>
+        <Text style={styles.preferenceValue}>
+          This checks for over-the-air JavaScript/UI updates. Native changes like new permissions, camera/audio modules, or app store build settings still require a new installed build.
+        </Text>
+        <View style={styles.row}>
+          <AppButton label="Check for App Update" onPress={() => void checkForUpdates()} variant="secondary" />
         </View>
       </SectionCard>
 

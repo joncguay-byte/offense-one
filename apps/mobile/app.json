@@ -5,6 +5,12 @@
     "entryPoint": "./index.js",
     "scheme": "offense-one",
     "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/2ba49ef8-21d1-45e0-873b-13fa0aa86b4a"
+    },
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#f6f3ee",

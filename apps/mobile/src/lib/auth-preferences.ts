@@ -5,7 +5,7 @@ import type { AuthUser } from "./api";
 const savedLoginKey = "offense-one-saved-login";
 const localAccountsKey = "offense-one-local-accounts";
 
-export type LocalLoginRole = "OFFICER" | "SUPERVISOR";
+export type LocalLoginRole = "OFFICER" | "SUPERVISOR" | "ADMIN";
 
 export type SavedLogin = {
   email: string;
@@ -34,6 +34,14 @@ const defaultSupervisorProfile: LocalAccountProfile = {
   badgeNumber: "2001"
 };
 
+const defaultAdminProfile: LocalAccountProfile = {
+  email: "admin@example.gov",
+  password: "ChangeMe123!",
+  role: "ADMIN",
+  fullName: "Admin User",
+  badgeNumber: "9001"
+};
+
 export const localOfficer: AuthUser = {
   id: "local-officer",
   email: defaultOfficerProfile.email,
@@ -50,17 +58,33 @@ export const localSupervisor: AuthUser = {
   badgeNumber: defaultSupervisorProfile.badgeNumber || null
 };
 
+export const localAdmin: AuthUser = {
+  id: "local-admin",
+  email: defaultAdminProfile.email,
+  role: "ADMIN",
+  fullName: defaultAdminProfile.fullName,
+  badgeNumber: defaultAdminProfile.badgeNumber || null
+};
+
 export function getLocalUser(role: LocalLoginRole) {
+  if (role === "ADMIN") {
+    return localAdmin;
+  }
+
   return role === "SUPERVISOR" ? localSupervisor : localOfficer;
 }
 
 function getDefaultProfile(role: LocalLoginRole) {
+  if (role === "ADMIN") {
+    return defaultAdminProfile;
+  }
+
   return role === "SUPERVISOR" ? defaultSupervisorProfile : defaultOfficerProfile;
 }
 
 function profileToUser(profile: LocalAccountProfile): AuthUser {
   return {
-    id: profile.role === "SUPERVISOR" ? "local-supervisor" : "local-officer",
+    id: profile.role === "ADMIN" ? "local-admin" : profile.role === "SUPERVISOR" ? "local-supervisor" : "local-officer",
     email: profile.email,
     role: profile.role,
     fullName: profile.fullName,
@@ -71,7 +95,8 @@ function profileToUser(profile: LocalAccountProfile): AuthUser {
 export async function loadLocalAccountProfiles(): Promise<Record<LocalLoginRole, LocalAccountProfile>> {
   const defaults = {
     OFFICER: defaultOfficerProfile,
-    SUPERVISOR: defaultSupervisorProfile
+    SUPERVISOR: defaultSupervisorProfile,
+    ADMIN: defaultAdminProfile
   };
   const raw = await SecureStore.getItemAsync(localAccountsKey);
   if (!raw) {
@@ -82,7 +107,8 @@ export async function loadLocalAccountProfiles(): Promise<Record<LocalLoginRole,
     const parsed = JSON.parse(raw) as Partial<Record<LocalLoginRole, Partial<LocalAccountProfile>>>;
     return {
       OFFICER: { ...defaultOfficerProfile, ...parsed.OFFICER, role: "OFFICER" },
-      SUPERVISOR: { ...defaultSupervisorProfile, ...parsed.SUPERVISOR, role: "SUPERVISOR" }
+      SUPERVISOR: { ...defaultSupervisorProfile, ...parsed.SUPERVISOR, role: "SUPERVISOR" },
+      ADMIN: { ...defaultAdminProfile, ...parsed.ADMIN, role: "ADMIN" }
     };
   } catch {
     return defaults;
@@ -122,7 +148,7 @@ export async function loadLoginPreference() {
 
   try {
     const parsed = JSON.parse(raw) as Partial<SavedLogin>;
-    if (!parsed.email || !parsed.password || (parsed.role !== "OFFICER" && parsed.role !== "SUPERVISOR")) {
+    if (!parsed.email || !parsed.password || (parsed.role !== "OFFICER" && parsed.role !== "SUPERVISOR" && parsed.role !== "ADMIN")) {
       return null;
     }
     return {

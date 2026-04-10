@@ -36,25 +36,23 @@ import {
   type SavedLogin
 } from "./src/lib/auth-preferences";
 import { registerForExpoPushToken } from "./src/lib/push";
-import { BrandLockup, BrandMark } from "./src/ui/brand";
-import { AppButton, HeroCard, MetricCard, SectionCard, Tag } from "./src/ui/components";
-import { theme } from "./src/ui/theme";
+import { loadLocalEvidence, setLocalEvidenceSelected, type LocalEvidenceRecord } from "./src/lib/local-evidence";
+import { BrandLockup } from "./src/ui/brand";
+import { AppButton, EmptyState, HeroCard, MetricCard, SectionCard, Tag } from "./src/ui/components";
+import { formatDateTime, theme } from "./src/ui/theme";
 
-type ScreenKey = "home" | "incident" | "audio" | "camera" | "report" | "jobs" | "notifications" | "settings";
+type ScreenKey = "recording" | "event" | "history" | "supervisor" | "settings";
 
 const screenOptions: Array<{ key: ScreenKey; title: string }> = [
-  { key: "home", title: "Overview" },
-  { key: "incident", title: "Incidents" },
-  { key: "audio", title: "Audio" },
-  { key: "camera", title: "Camera" },
-  { key: "report", title: "Narrative" },
-  { key: "jobs", title: "Queue" },
-  { key: "notifications", title: "Alerts" },
+  { key: "recording", title: "Recording" },
+  { key: "event", title: "Event" },
+  { key: "history", title: "History" },
+  { key: "supervisor", title: "Supervisor" },
   { key: "settings", title: "Settings" }
 ];
 
 export default function App() {
-  const [screen, setScreen] = useState<ScreenKey>("home");
+  const [screen, setScreen] = useState<ScreenKey>("recording");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [incidents, setIncidents] = useState<IncidentRecord[]>([]);
   const [supervisors, setSupervisors] = useState<AuthUser[]>([]);
@@ -68,6 +66,7 @@ export default function App() {
   const [loginRole, setLoginRole] = useState<LocalLoginRole>("OFFICER");
   const [rememberLogin, setRememberLogin] = useState(true);
   const [savedLogin, setSavedLogin] = useState<SavedLogin | null>(null);
+  const [localEvidence, setLocalEvidence] = useState<LocalEvidenceRecord[]>([]);
   const [biometricsReady, setBiometricsReady] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
 
@@ -148,8 +147,8 @@ export default function App() {
 
     setIncidents((current) => [incident, ...current]);
     setSelectedIncidentId(incident.id);
-    setScreen("audio");
-    setStatus("Local incident created. Recorder is ready.");
+    setScreen("event");
+    setStatus("Event created. Add photos and choose recordings for the draft.");
   }
 
   function assignLocalSupervisor(incidentId: string, supervisor: AuthUser) {
@@ -204,7 +203,7 @@ export default function App() {
   async function completeSignIn(user: AuthUser, modeLabel: string) {
     setStandaloneMode(false);
     setCurrentUser(user);
-    setScreen("audio");
+    setScreen("recording");
     const expoToken = await registerForExpoPushToken();
     if (expoToken) {
       await registerPushToken("EXPO", expoToken);
@@ -242,7 +241,7 @@ export default function App() {
     setJobs([]);
     setNotifications([]);
     setSelectedIncidentId("local-incident-1");
-    setScreen("audio");
+    setScreen("recording");
     setStatus("Signed in. Recording, camera, settings, and review screens are available. Cloud sync requires the agency API.");
   }
 
@@ -262,7 +261,14 @@ export default function App() {
     setLoginBusy(true);
     setLoginRole(role);
     try {
-      if (role === "OFFICER") {
+      if (role === "ADMIN") {
+        if (!(await isLocalCredential(loginEmail, loginPassword, role))) {
+          setStatus("Admin login failed. Check the saved admin username/password.");
+          return;
+        }
+        await persistLoginIfNeeded(role);
+        await ensureLocalIncident(role);
+      } else if (role === "OFFICER") {
         const session = await signInOfficer();
         await persistLoginIfNeeded(role);
         await completeSignIn(session.user, "Signed in");
@@ -290,6 +296,10 @@ export default function App() {
 
   async function signInAsSupervisor() {
     await signInWithRole("SUPERVISOR");
+  }
+
+  async function signInAsAdmin() {
+    await signInWithRole("ADMIN");
   }
 
   async function signInWithSavedLogin() {
@@ -351,7 +361,8 @@ export default function App() {
     setIncidents([]);
     setJobs([]);
     setNotifications([]);
-    setScreen("home");
+    setLocalEvidence([]);
+    setScreen("recording");
     setStatus("Signed out. Use your saved login, biometrics, or username and password to continue.");
   }
 
@@ -404,7 +415,32 @@ export default function App() {
     return () => clearInterval(handle);
   }, [currentUser, selectedIncidentId]);
 
+  useEffect(() => {
+    if (!selectedIncidentId?.startsWith("local-")) {
+      setLocalEvidence([]);
+      return;
+    }
+
+    loadLocalEvidence(selectedIncidentId)
+      .then(setLocalEvidence)
+      .catch(() => setLocalEvidence([]));
+  }, [selectedIncidentId, status]);
+
+  async function refreshLocalEvidence() {
+    if (!selectedIncidentId?.startsWith("local-")) {
+      return;
+    }
+
+    setLocalEvidence(await loadLocalEvidence(selectedIncidentId));
+  }
+
+  async function toggleEvidenceForDraft(record: LocalEvidenceRecord) {
+    await setLocalEvidenceSelected(record.id, !record.selectedForDraft);
+    await refreshLocalEvidence();
+  }
+
   const unreadCount = notifications.filter((item) => !item.readAt).length;
+  const selectedRecordings = localEvidence.filter((record) => record.type === "AUDIO" && record.selectedForDraft);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -417,14 +453,16 @@ export default function App() {
               <MetricCard label="Unread alerts" value={String(unreadCount)} tone={unreadCount > 0 ? "warning" : "success"} />
             </View>
           </View>
-          <Text style={styles.heroHeadline}>Built for faster field capture and calmer review.</Text>
+          <Text style={styles.heroHeadline}>Five modules. Less hunting. Faster reports.</Text>
           <Text style={styles.heroBody}>
-            Offense One keeps evidence collection, queue status, and narrative review in one mobile workspace so officers and supervisors spend less time hunting through steps.
+            Offense One now groups field work into Recording, Event, History, Supervisor, and Settings so the app follows the way the call actually unfolds.
           </Text>
           <View style={styles.heroRibbonRow}>
-            <AppButton label="Multi-speaker Audio" onPress={() => setScreen("audio")} variant="secondary" />
-            <AppButton label="Scene Imagery" onPress={() => setScreen("camera")} variant="secondary" />
-            <AppButton label="Officer-reviewed Drafts" onPress={() => setScreen("report")} variant="secondary" />
+            <AppButton label="Recording" onPress={() => setScreen("recording")} variant="secondary" />
+            <AppButton label="Event" onPress={() => setScreen("event")} variant="secondary" />
+            <AppButton label="History" onPress={() => setScreen("history")} variant="secondary" />
+            <AppButton label="Supervisor" onPress={() => setScreen("supervisor")} variant="secondary" />
+            <AppButton label="Settings" onPress={() => setScreen("settings")} variant="secondary" />
           </View>
         </View>
 
@@ -434,6 +472,7 @@ export default function App() {
               <View style={styles.roleRow}>
                 <AppButton label="Officer" onPress={() => setLoginRole("OFFICER")} variant={loginRole === "OFFICER" ? "primary" : "ghost"} />
                 <AppButton label="Supervisor" onPress={() => setLoginRole("SUPERVISOR")} variant={loginRole === "SUPERVISOR" ? "primary" : "ghost"} />
+                <AppButton label="Admin" onPress={() => setLoginRole("ADMIN")} variant={loginRole === "ADMIN" ? "primary" : "ghost"} />
               </View>
               <TextInput
                 value={loginEmail}
@@ -458,15 +497,15 @@ export default function App() {
               </View>
               <View style={styles.actionGrid}>
                 <AppButton
-                  label={loginRole === "SUPERVISOR" ? "Login as Supervisor" : "Login as Officer"}
-                  onPress={loginRole === "SUPERVISOR" ? signInAsSupervisor : signInAsOfficer}
+                  label={loginRole === "ADMIN" ? "Login as Admin" : loginRole === "SUPERVISOR" ? "Login as Supervisor" : "Login as Officer"}
+                  onPress={loginRole === "ADMIN" ? signInAsAdmin : loginRole === "SUPERVISOR" ? signInAsSupervisor : signInAsOfficer}
                   disabled={loginBusy}
                 />
                 <AppButton label={biometricsReady ? "Use Biometrics" : "Use Saved Login"} onPress={signInWithSavedLogin} disabled={loginBusy || !savedLogin} variant="secondary" />
                 <AppButton label="Keycloak / Agency Login" onPress={signInWithKeycloak} disabled={loginBusy} variant="ghost" />
               </View>
               <Text style={styles.loginHint}>
-                Credentials: officer@example.gov or supervisor@example.gov with password ChangeMe123!. Agency login requires the backend API to be deployed.
+                Credentials: officer@example.gov, supervisor@example.gov, or admin@example.gov with password ChangeMe123!. You can change these under Settings after signing in.
               </Text>
             </View>
           </SectionCard>
@@ -485,9 +524,9 @@ export default function App() {
         )}
 
         <View style={styles.quickStats}>
-          <MetricCard label="Incidents" value={String(incidents.length)} />
-          <MetricCard label="Queue items" value={String(jobs.length)} tone="accent" />
-          <MetricCard label="Supervisors" value={String(supervisors.length)} tone="success" />
+          <MetricCard label="Events" value={String(incidents.length)} />
+          <MetricCard label="Recordings" value={String(localEvidence.filter((record) => record.type === "AUDIO").length)} tone="accent" />
+          <MetricCard label="Draft picks" value={String(selectedRecordings.length)} tone="success" />
         </View>
 
         <ScrollView horizontal contentContainerStyle={styles.nav} showsHorizontalScrollIndicator={false}>
@@ -502,90 +541,99 @@ export default function App() {
           ))}
         </ScrollView>
 
-        {screen === "home" ? (
+        {screen === "recording" ? (
           <View style={styles.sectionStack}>
-            <SectionCard
-              title="Start Recording"
-              subtitle="Audio capture is the primary field action. Use this first, then add scene imagery or review the draft."
-            >
-              <View style={styles.primaryCaptureCard}>
-                <Text style={styles.primaryCaptureTitle}>Ready for field audio</Text>
-                <Text style={styles.primaryCaptureBody}>
-                  Selected incident: {selectedIncident ? `${selectedIncident.caseNumber} / ${selectedIncident.title}` : "none yet"}
-                </Text>
-                <View style={styles.homeActionGrid}>
-                  <AppButton label="Open Recorder" onPress={() => setScreen("audio")} />
-                  <AppButton label="Take Call Photo" onPress={() => setScreen("camera")} variant="secondary" />
-                  <AppButton label="Review Draft" onPress={() => setScreen("report")} variant="ghost" />
-                </View>
-              </View>
-            </SectionCard>
-            <SectionCard
-              title="Command Overview"
-              subtitle="Keep the key field tasks visible and reduce how much hunting the officer has to do."
-            >
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryTitle}>Selected incident</Text>
-                <Text style={styles.summaryValue}>
-                  {selectedIncident ? `${selectedIncident.caseNumber} / ${selectedIncident.title}` : "Choose or create an incident"}
-                </Text>
-                <Text style={styles.summaryMeta}>{selectedIncident?.location || "No location captured yet"}</Text>
-              </View>
-              <View style={styles.homeActionGrid}>
-                <AppButton label="Open Incident Desk" onPress={() => setScreen("incident")} />
-                <AppButton label="Capture Audio" onPress={() => setScreen("audio")} variant="secondary" />
-                <AppButton label="Capture Camera" onPress={() => setScreen("camera")} variant="secondary" />
-                <AppButton label="Review Narrative" onPress={() => setScreen("report")} variant="ghost" />
-                <AppButton label="Open Settings" onPress={() => setScreen("settings")} variant="ghost" />
-              </View>
-            </SectionCard>
-
-            <SectionCard title="Workflow Principles" subtitle="Designed for field clarity and defensible review.">
-              <View style={styles.ruleCard}>
-                <Text style={styles.ruleTitle}>Evidence-first narrative</Text>
-                <Text style={styles.ruleBody}>Audio, imagery, and timestamps stay visible throughout drafting so officers review grounded source material instead of black-box output.</Text>
-              </View>
-              <View style={styles.ruleCard}>
-                <Text style={styles.ruleTitle}>Queue transparency</Text>
-                <Text style={styles.ruleBody}>Ingest, transcription, draft generation, and export each show their own status so nothing feels stuck or hidden.</Text>
-              </View>
-              <View style={styles.ruleCard}>
-                <Text style={styles.ruleTitle}>Supervisor-friendly handoff</Text>
-                <Text style={styles.ruleBody}>Assignments, notifications, and approval states are built into the same flow rather than spread across separate tools.</Text>
-              </View>
-            </SectionCard>
-
-            <SectionCard title="App Identity" subtitle="Brand assets are ready to export into production icon and splash artwork.">
-              <View style={styles.brandPreviewCard}>
-                <BrandMark size={88} />
-                <View style={styles.brandPreviewCopy}>
-                  <Text style={styles.brandPreviewTitle}>Offense One mark</Text>
-                  <Text style={styles.brandPreviewBody}>A compact O1 monogram with a command-grade palette for app icon, splash, and badge use.</Text>
-                </View>
-              </View>
-            </SectionCard>
+            <AudioCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshIncidents} onEvidenceSaved={refreshLocalEvidence} />
           </View>
         ) : null}
 
-        {screen === "incident" ? (
-          <NewIncidentScreen
-            currentUser={currentUser}
-            incidents={incidents}
-            supervisors={supervisors}
-            localMode={standaloneMode}
-            onCreated={refreshIncidents}
-            onLocalCreated={createLocalIncident}
-            onLocalAssigned={assignLocalSupervisor}
-            onSelectIncident={setSelectedIncidentId}
-            selectedIncidentId={selectedIncidentId}
-          />
+        {screen === "event" ? (
+          <View style={styles.sectionStack}>
+            <NewIncidentScreen
+              currentUser={currentUser}
+              incidents={incidents}
+              supervisors={supervisors}
+              localMode={standaloneMode}
+              onCreated={refreshIncidents}
+              onLocalCreated={createLocalIncident}
+              onLocalAssigned={assignLocalSupervisor}
+              onSelectIncident={setSelectedIncidentId}
+              selectedIncidentId={selectedIncidentId}
+            />
+            <CameraCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshLocalEvidence} />
+            <SectionCard title="Draft Evidence Selection" subtitle="Select exactly which recordings and photos should support the draft narrative.">
+              {localEvidence.length === 0 ? (
+                <EmptyState title="No saved evidence yet" body="Use Recording to save audio or the camera section above to save photos for this event." />
+              ) : (
+                localEvidence.map((record) => (
+                  <View key={record.id} style={[styles.evidenceCard, record.selectedForDraft ? styles.evidenceCardSelected : null]}>
+                    <View style={styles.evidenceHeader}>
+                      <View style={styles.evidenceCopy}>
+                        <Text style={styles.evidenceTitle}>{record.type === "AUDIO" ? "Recording" : record.label || "Photo"}</Text>
+                        <Text style={styles.evidenceMeta}>{formatDateTime(record.createdAt)}</Text>
+                        <Text style={styles.evidenceMeta}>{record.fileName}</Text>
+                      </View>
+                      <AppButton
+                        label={record.selectedForDraft ? "Selected" : "Use in Draft"}
+                        onPress={() => void toggleEvidenceForDraft(record)}
+                        variant={record.selectedForDraft ? "secondary" : "primary"}
+                      />
+                    </View>
+                  </View>
+                ))
+              )}
+            </SectionCard>
+            <DraftReportScreen currentUser={currentUser} selectedIncident={selectedIncident} onRefresh={refreshIncidents} onLocalReportGenerated={generateLocalReport} />
+          </View>
         ) : null}
 
-        {screen === "audio" ? <AudioCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshIncidents} /> : null}
-        {screen === "camera" ? <CameraCaptureScreen selectedIncidentId={selectedIncidentId} onUploaded={refreshIncidents} /> : null}
-        {screen === "report" ? <DraftReportScreen currentUser={currentUser} selectedIncident={selectedIncident} onRefresh={refreshIncidents} onLocalReportGenerated={generateLocalReport} /> : null}
-        {screen === "jobs" ? <JobsScreen jobs={jobs} selectedIncidentId={selectedIncidentId} /> : null}
-        {screen === "notifications" ? <NotificationsScreen notifications={notifications} onRead={handleReadNotification} /> : null}
+        {screen === "history" ? (
+          <SectionCard title="History" subtitle="Previous events sorted by date and time. Select any event to keep working it.">
+            {incidents.length === 0 ? (
+              <EmptyState title="No event history yet" body="Create your first event from the Event module." />
+            ) : (
+              incidents.map((incident) => (
+                <View key={incident.id} style={[styles.evidenceCard, selectedIncidentId === incident.id ? styles.evidenceCardSelected : null]}>
+                  <View style={styles.evidenceHeader}>
+                    <View style={styles.evidenceCopy}>
+                      <Text style={styles.evidenceTitle}>{incident.caseNumber}</Text>
+                      <Text style={styles.evidenceMeta}>{incident.title}</Text>
+                      <Text style={styles.evidenceMeta}>{formatDateTime(incident.occurredAt)} / {incident.status}</Text>
+                    </View>
+                    <AppButton
+                      label={selectedIncidentId === incident.id ? "Selected" : "Open"}
+                      onPress={() => {
+                        setSelectedIncidentId(incident.id);
+                        setScreen("event");
+                      }}
+                      variant={selectedIncidentId === incident.id ? "secondary" : "primary"}
+                    />
+                  </View>
+                </View>
+              ))
+            )}
+          </SectionCard>
+        ) : null}
+
+        {screen === "supervisor" ? (
+          <View style={styles.sectionStack}>
+            <SectionCard title="Supervisor Controls" subtitle="Admin, supervisor review, queue status, and alerts live here.">
+              <View style={styles.tagRow}>
+                <Tag label={currentUser?.role || "Not signed in"} active={!!currentUser} tone={currentUser?.role === "ADMIN" || currentUser?.role === "SUPERVISOR" ? "success" : "warning"} />
+                <Tag label={`${jobs.length} queue items`} />
+                <Tag label={`${unreadCount} unread alerts`} />
+              </View>
+              {currentUser?.role === "OFFICER" ? (
+                <Text style={styles.panelCopy}>Officer accounts can view queue status here. Supervisor and admin accounts will use this module for approvals, assignments, and administrative controls.</Text>
+              ) : (
+                <Text style={styles.panelCopy}>Supervisor/admin mode is active. Use this area to monitor queued work, review alerts, and route event drafts.</Text>
+              )}
+            </SectionCard>
+            <JobsScreen jobs={jobs} selectedIncidentId={selectedIncidentId} />
+            <NotificationsScreen notifications={notifications} onRead={handleReadNotification} />
+          </View>
+        ) : null}
+
         {screen === "settings" ? <SettingsScreen currentUser={currentUser} onLocalAccountUpdated={handleLocalAccountUpdated} onSignOut={signOut} /> : null}
       </ScrollView>
     </SafeAreaView>
@@ -643,6 +691,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing.sm
+  },
+  tagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.xs
+  },
+  panelCopy: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: theme.colors.text
   },
   quickStats: {
     flexDirection: "row",
@@ -814,5 +872,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     color: theme.colors.text
+  },
+  evidenceCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.sm
+  },
+  evidenceCardSelected: {
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.accentSoft
+  },
+  evidenceHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: theme.spacing.sm
+  },
+  evidenceCopy: {
+    flex: 1,
+    gap: 4
+  },
+  evidenceTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: theme.colors.ink
+  },
+  evidenceMeta: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.muted
   }
 });

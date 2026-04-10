@@ -9,6 +9,8 @@ export type LocalEvidenceRecord = {
   fileName: string;
   createdAt: string;
   createdBy?: string | null;
+  selectedForDraft?: boolean;
+  label?: string | null;
 };
 
 const evidenceDirectory = new Directory(Paths.document, "offense-one-evidence");
@@ -70,6 +72,40 @@ export async function saveLocalAudioEvidence(incidentId: string, sourceUri: stri
   const records = await loadManifest();
   await saveManifest([record, ...records]);
   return record;
+}
+
+export async function saveLocalImageEvidence(incidentId: string, sourceUri: string, label: string, createdBy?: string | null) {
+  ensureEvidenceDirectory();
+  const sourceFile = new File(sourceUri);
+  const fileName = `${incidentId}-${label.toLowerCase().replace(/\s+/g, "-")}-${timestampForFileName()}.jpg`;
+  const destination = new File(evidenceDirectory, fileName);
+
+  if (destination.exists) {
+    destination.delete();
+  }
+  sourceFile.copy(destination);
+
+  const record: LocalEvidenceRecord = {
+    id: `local-image-${Date.now()}`,
+    incidentId,
+    type: "IMAGE",
+    sourceUri,
+    savedUri: destination.uri,
+    fileName,
+    createdAt: new Date().toISOString(),
+    createdBy,
+    label
+  };
+  const records = await loadManifest();
+  await saveManifest([record, ...records]);
+  return record;
+}
+
+export async function setLocalEvidenceSelected(recordId: string, selectedForDraft: boolean) {
+  const records = await loadManifest();
+  const nextRecords = records.map((record) => (record.id === recordId ? { ...record, selectedForDraft } : record));
+  await saveManifest(nextRecords);
+  return nextRecords.find((record) => record.id === recordId) || null;
 }
 
 export async function loadLocalEvidence(incidentId?: string | null) {

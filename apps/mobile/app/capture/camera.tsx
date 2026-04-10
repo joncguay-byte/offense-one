@@ -2,15 +2,18 @@ import { useRef, useState } from "react";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { StyleSheet, Text, View } from "react-native";
 import { attachCallForServiceImage, attachSceneImage } from "../../src/features/reporting";
+import { saveLocalImageEvidence } from "../../src/lib/local-evidence";
+import type { AuthUser } from "../../src/lib/api";
 import { AppButton, HeroCard, MetricCard, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { theme } from "../../src/ui/theme";
 
 type Props = {
+  currentUser?: AuthUser | null;
   selectedIncidentId: string | null;
   onUploaded: () => Promise<void>;
 };
 
-export default function CameraCaptureScreen({ selectedIncidentId, onUploaded }: Props) {
+export default function CameraCaptureScreen({ currentUser, selectedIncidentId, onUploaded }: Props) {
   const cameraRef = useRef<CameraView | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [photoUri, setPhotoUri] = useState("");
@@ -44,8 +47,10 @@ export default function CameraCaptureScreen({ selectedIncidentId, onUploaded }: 
     setBusy(true);
     try {
       if (selectedIncidentId.startsWith("local-")) {
+        const label = captureKind === "CALL_FOR_SERVICE" ? "Call For Service" : "Scene Photo";
+        const saved = await saveLocalImageEvidence(selectedIncidentId, photoUri, label, currentUser?.fullName);
         await onUploaded();
-        setStatus(captureKind === "CALL_FOR_SERVICE" ? "Call-for-service image saved to this incident." : "Scene image saved to this incident.");
+        setStatus(`${label} saved to this incident as ${saved.fileName}.`);
         return;
       }
 
@@ -107,7 +112,7 @@ export default function CameraCaptureScreen({ selectedIncidentId, onUploaded }: 
         <View style={styles.row}>
           <AppButton label="Capture Photo" onPress={capturePhoto} disabled={busy} />
           <AppButton
-            label={captureKind === "CALL_FOR_SERVICE" ? "Upload Call Photo" : "Upload Scene Photo"}
+            label={selectedIncidentId?.startsWith("local-") ? "Save Photo to Event" : captureKind === "CALL_FOR_SERVICE" ? "Upload Call Photo" : "Upload Scene Photo"}
             onPress={uploadPhoto}
             disabled={busy || !photoUri}
             variant="secondary"
