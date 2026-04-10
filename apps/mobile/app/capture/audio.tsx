@@ -3,7 +3,7 @@ import { AudioModule, RecordingInput, RecordingPresets, createAudioPlayer, setAu
 import { StyleSheet, Text, View } from "react-native";
 import { attachAudioEvidence, attachOfficerVoiceReference, loadMyVoiceProfile, saveMyVoiceProfile } from "../../src/features/reporting";
 import { loadRecordingCueSettings, saveRecordingCueSettings, type RecordingCueVolume } from "../../src/lib/audio-settings";
-import { loadLocalEvidence, saveLocalAudioEvidence, type LocalEvidenceRecord } from "../../src/lib/local-evidence";
+import { deleteLocalEvidence, loadLocalEvidence, saveLocalAudioEvidence, type LocalEvidenceRecord } from "../../src/lib/local-evidence";
 import { buildToneDataUri, getCueVolumeLevel } from "../../src/lib/recording-cues";
 import type { AuthUser } from "../../src/lib/api";
 import { AppButton, Screen, SectionCard, Tag } from "../../src/ui/components";
@@ -226,11 +226,37 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
       await recorder.stop();
       const uri = recorder.uri || recorderState.url || "";
       setRecordingUri(uri);
-      setStatus(uri ? "Recording saved locally." : "Recording finished, but no file was returned.");
+      if (uri && selectedIncidentId?.startsWith("local-")) {
+        const saved = await saveLocalAudioEvidence(selectedIncidentId, uri, currentUser?.fullName);
+        await onEvidenceSaved?.();
+        const records = await loadLocalEvidence(selectedIncidentId);
+        setLocalRecordings(records.filter((record) => record.type === "AUDIO"));
+        setRecordingUri(saved.savedUri);
+        setStatus(`Recording saved: ${saved.fileName}`);
+      } else {
+        setStatus(uri ? "Recording saved locally." : "Recording finished, but no file was returned.");
+      }
       await playCue("stop");
       await prepareRecorderAndInputs(selectedInputUid);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to stop recording.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteRecording(recordId: string) {
+    setBusy(true);
+    try {
+      await deleteLocalEvidence(recordId);
+      await onEvidenceSaved?.();
+      if (selectedIncidentId?.startsWith("local-")) {
+        const records = await loadLocalEvidence(selectedIncidentId);
+        setLocalRecordings(records.filter((record) => record.type === "AUDIO"));
+      }
+      setStatus("Recording deleted.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to delete recording.");
     } finally {
       setBusy(false);
     }
@@ -345,7 +371,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
         <View style={styles.row}>
           <AppButton label="Save Reusable Profile" onPress={saveReusableProfile} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
           <AppButton label="Use as Officer Reference" onPress={uploadOfficerReference} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
-          <AppButton label={selectedIncidentId?.startsWith("local-") ? "Save Audio to Incident" : "Upload Audio"} onPress={uploadRecording} disabled={busy || !recordingUri} variant="ghost" />
+          {!selectedIncidentId?.startsWith("local-") ? <AppButton label="Upload Audio" onPress={uploadRecording} disabled={busy || !recordingUri} variant="ghost" /> : null}
         </View>
       </SectionCard>
 
@@ -358,6 +384,9 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
               <Text style={styles.recordingTitle}>{new Date(record.createdAt).toLocaleString()}</Text>
               <Text style={styles.panelCopy}>{record.fileName}</Text>
               <Text style={styles.path}>{record.savedUri}</Text>
+              <View style={styles.row}>
+                <AppButton label="Delete" onPress={() => void deleteRecording(record.id)} disabled={busy} variant="danger" />
+              </View>
             </View>
           ))
         )}

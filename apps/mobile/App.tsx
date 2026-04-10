@@ -169,6 +169,34 @@ export default function App() {
     setEventLocation("");
   }
 
+  function saveSelectedEventDetails() {
+    if (!selectedIncident) {
+      createEventFromForm();
+      return;
+    }
+
+    setIncidents((current) =>
+      current.map((incident) =>
+        incident.id === selectedIncident.id
+          ? {
+              ...incident,
+              caseNumber: caseNumber.trim() || incident.caseNumber,
+              title: eventTitle.trim() || incident.title,
+              location: eventLocation.trim() || null
+            }
+          : incident
+      )
+    );
+    setStatus("Event details saved.");
+  }
+
+  function selectEvent(incident: IncidentRecord) {
+    setSelectedIncidentId(incident.id);
+    setCaseNumber(incident.caseNumber);
+    setEventTitle(incident.title);
+    setEventLocation(incident.location || "");
+  }
+
   function assignLocalSupervisor(incidentId: string, supervisor: AuthUser) {
     setIncidents((current) =>
       current.map((incident) =>
@@ -453,6 +481,16 @@ export default function App() {
   }, [currentUser, selectedIncidentId]);
 
   useEffect(() => {
+    if (!selectedIncident) {
+      return;
+    }
+
+    setCaseNumber(selectedIncident.caseNumber);
+    setEventTitle(selectedIncident.title);
+    setEventLocation(selectedIncident.location || "");
+  }, [selectedIncidentId]);
+
+  useEffect(() => {
     if (!selectedIncidentId?.startsWith("local-")) {
       setLocalEvidence([]);
       return;
@@ -477,6 +515,7 @@ export default function App() {
   }
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
+  const audioRecordings = localEvidence.filter((record) => record.type === "AUDIO");
   const selectedRecordings = localEvidence.filter((record) => record.type === "AUDIO" && record.selectedForDraft);
 
   if (!currentUser) {
@@ -568,51 +607,46 @@ export default function App() {
         {screen === "event" ? (
           <SectionCard title="Event" subtitle={status}>
             <TextInput value={caseNumber} onChangeText={setCaseNumber} placeholder="Case number" placeholderTextColor={theme.colors.muted} style={styles.input} />
-            <TextInput value={eventTitle} onChangeText={setEventTitle} placeholder="Incident title" placeholderTextColor={theme.colors.muted} style={styles.input} />
+            <TextInput value={eventTitle} onChangeText={setEventTitle} placeholder="Event label" placeholderTextColor={theme.colors.muted} style={styles.input} />
             <TextInput value={eventLocation} onChangeText={setEventLocation} placeholder="Location" placeholderTextColor={theme.colors.muted} style={styles.input} />
             <View style={styles.actionGrid}>
-              <AppButton label="Create Incident" onPress={createEventFromForm} />
+              <AppButton label={selectedIncident ? "Save Event Details" : "Create Incident"} onPress={saveSelectedEventDetails} />
+              <AppButton label="Create New Event" onPress={createEventFromForm} variant="secondary" />
               {incidents.map((incident) => (
                 <AppButton
                   key={incident.id}
                   label={selectedIncidentId === incident.id ? `${incident.caseNumber} Selected` : `Open ${incident.caseNumber}`}
-                  onPress={() => setSelectedIncidentId(incident.id)}
+                  onPress={() => selectEvent(incident)}
                   variant={selectedIncidentId === incident.id ? "secondary" : "ghost"}
                 />
               ))}
             </View>
 
             <View style={styles.eventDivider} />
-            <Text style={styles.eventSectionTitle}>Recordings and Photos for Draft</Text>
-              {localEvidence.length === 0 ? (
-                <EmptyState title="No saved evidence yet" body="Save recordings from the Recording module or take photos below." />
+            <Text style={styles.eventSectionTitle}>Audio Recordings for Draft</Text>
+              {audioRecordings.length === 0 ? (
+                <EmptyState title="No saved recordings yet" body="Save recordings from the Recording module, then choose them here." />
               ) : (
-                localEvidence.map((record) => (
+                audioRecordings.map((record) => (
                   <View key={record.id} style={[styles.evidenceCard, record.selectedForDraft ? styles.evidenceCardSelected : null]}>
-                    <View style={styles.evidenceHeader}>
+                    <View style={styles.checkboxRow}>
+                      <Switch value={!!record.selectedForDraft} onValueChange={() => void toggleEvidenceForDraft(record)} />
                       <View style={styles.evidenceCopy}>
-                        <Text style={styles.evidenceTitle}>{record.type === "AUDIO" ? "Recording" : record.label || "Photo"}</Text>
+                        <Text style={styles.evidenceTitle}>Use this recording</Text>
                         <Text style={styles.evidenceMeta}>{formatDateTime(record.createdAt)}</Text>
                         <Text style={styles.evidenceMeta}>{record.fileName}</Text>
                       </View>
-                      <AppButton
-                        label={record.selectedForDraft ? "Selected" : "Use in Draft"}
-                        onPress={() => void toggleEvidenceForDraft(record)}
-                        variant={record.selectedForDraft ? "secondary" : "primary"}
-                      />
                     </View>
                   </View>
                 ))
               )}
 
             <View style={styles.eventDivider} />
-            <CameraCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshLocalEvidence} compact />
-
-            <View style={styles.eventDivider} />
+            <Text style={styles.eventSectionTitle}>Generate Draft</Text>
             <TextInput
               value={draftNotes}
               onChangeText={setDraftNotes}
-              placeholder="Draft notes"
+              placeholder="Draft narrative notes"
               placeholderTextColor={theme.colors.muted}
               style={[styles.input, styles.multiline]}
               multiline
@@ -621,6 +655,10 @@ export default function App() {
               <AppButton label="Generate Draft Narrative" onPress={generateEventDraft} disabled={!selectedIncident} />
             </View>
             {selectedIncident?.generatedReports[0] ? <Text style={styles.draftPreview}>{selectedIncident.generatedReports[0].body}</Text> : null}
+
+            <View style={styles.eventDivider} />
+            <Text style={styles.eventSectionTitle}>Photos</Text>
+            <CameraCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshLocalEvidence} compact />
           </SectionCard>
         ) : null}
 
@@ -941,6 +979,11 @@ const styles = StyleSheet.create({
   evidenceHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+    gap: theme.spacing.sm
+  },
+  checkboxRow: {
+    flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.sm
   },

@@ -108,6 +108,25 @@ export async function setLocalEvidenceSelected(recordId: string, selectedForDraf
   return nextRecords.find((record) => record.id === recordId) || null;
 }
 
+export async function deleteLocalEvidence(recordId: string) {
+  const records = await loadManifest();
+  const record = records.find((item) => item.id === recordId);
+  if (record?.savedUri) {
+    try {
+      const file = new File(record.savedUri);
+      if (file.exists) {
+        file.delete();
+      }
+    } catch {
+      // Keep manifest cleanup moving even if the OS has already removed the file.
+    }
+  }
+
+  const nextRecords = records.filter((item) => item.id !== recordId);
+  await saveManifest(nextRecords);
+  return record || null;
+}
+
 export async function loadLocalEvidence(incidentId?: string | null) {
   const records = await loadManifest();
   return incidentId ? records.filter((record) => record.incidentId === incidentId) : records;
