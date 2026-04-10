@@ -47,7 +47,7 @@ export function buildToneDataUri(frequency: number, durationMs: number) {
 
   for (let index = 0; index < sampleCount; index += 1) {
     const envelope = Math.sin((Math.PI * index) / sampleCount);
-    const sample = Math.sin((2 * Math.PI * frequency * index) / sampleRate) * 0.25 * envelope;
+    const sample = Math.sin((2 * Math.PI * frequency * index) / sampleRate) * 0.65 * envelope;
     view.setInt16(44 + index * 2, Math.round(sample * 32767), true);
   }
 
@@ -56,12 +56,12 @@ export function buildToneDataUri(frequency: number, durationMs: number) {
 
 export function getCueVolumeLevel(volume: RecordingCueVolume) {
   if (volume === "soft") {
-    return 0.3;
+    return 0.5;
   }
 
   if (volume === "loud") {
     return 1;
   }
 
-  return 0.65;
+  return 0.85;
 }

@@ -4,10 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import type { JobRecord, NotificationRecord } from "./src/lib/shared-types";
 import AudioCaptureScreen from "./app/capture/audio";
 import CameraCaptureScreen from "./app/capture/camera";
-import NewIncidentScreen from "./app/incident/new";
 import JobsScreen from "./app/jobs/index";
 import NotificationsScreen from "./app/notifications/index";
-import DraftReportScreen from "./app/reports/draft";
 import SettingsScreen from "./app/settings/index";
 import {
   loadIncidents,
@@ -38,7 +36,7 @@ import {
 import { registerForExpoPushToken } from "./src/lib/push";
 import { loadLocalEvidence, setLocalEvidenceSelected, type LocalEvidenceRecord } from "./src/lib/local-evidence";
 import { BrandLockup } from "./src/ui/brand";
-import { AppButton, EmptyState, HeroCard, MetricCard, SectionCard, Tag } from "./src/ui/components";
+import { AppButton, EmptyState, MetricCard, SectionCard, Tag } from "./src/ui/components";
 import { formatDateTime, theme } from "./src/ui/theme";
 
 type ScreenKey = "recording" | "event" | "history" | "supervisor" | "settings";
@@ -67,6 +65,10 @@ export default function App() {
   const [rememberLogin, setRememberLogin] = useState(true);
   const [savedLogin, setSavedLogin] = useState<SavedLogin | null>(null);
   const [localEvidence, setLocalEvidence] = useState<LocalEvidenceRecord[]>([]);
+  const [caseNumber, setCaseNumber] = useState("");
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventLocation, setEventLocation] = useState("");
+  const [draftNotes, setDraftNotes] = useState("");
   const [biometricsReady, setBiometricsReady] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
 
@@ -151,6 +153,22 @@ export default function App() {
     setStatus("Event created. Add photos and choose recordings for the draft.");
   }
 
+  function createEventFromForm() {
+    if (!caseNumber.trim() || !eventTitle.trim()) {
+      setStatus("Case number and event title are required.");
+      return;
+    }
+
+    createLocalIncident({
+      caseNumber: caseNumber.trim(),
+      title: eventTitle.trim(),
+      location: eventLocation.trim() || undefined
+    });
+    setCaseNumber("");
+    setEventTitle("");
+    setEventLocation("");
+  }
+
   function assignLocalSupervisor(incidentId: string, supervisor: AuthUser) {
     setIncidents((current) =>
       current.map((incident) =>
@@ -200,6 +218,24 @@ export default function App() {
     );
   }
 
+  function generateEventDraft() {
+    if (!selectedIncident) {
+      setStatus("Create or select an event first.");
+      return;
+    }
+
+    const selectedEvidence = localEvidence.filter((record) => record.selectedForDraft);
+    const body = [
+      `I responded to ${selectedIncident.title}${selectedIncident.location ? ` at ${selectedIncident.location}` : ""}.`,
+      selectedEvidence.length > 0 ? `${selectedEvidence.length} selected evidence item(s) were used for this draft.` : "No recordings or photos were selected for this draft.",
+      draftNotes ? `Notes: ${draftNotes}` : ""
+    ]
+      .filter(Boolean)
+      .join(" ");
+    generateLocalReport(selectedIncident.id, body, draftNotes);
+    setStatus("Draft narrative generated for this event.");
+  }
+
   async function completeSignIn(user: AuthUser, modeLabel: string) {
     setStandaloneMode(false);
     setCurrentUser(user);
@@ -216,7 +252,8 @@ export default function App() {
   async function ensureLocalIncident(userRole: LocalLoginRole) {
     const officer = await loadLocalUser("OFFICER");
     const supervisor = await loadLocalUser("SUPERVISOR");
-    const signedInUser = userRole === "SUPERVISOR" ? supervisor : officer;
+    const admin = await loadLocalUser("ADMIN");
+    const signedInUser = userRole === "ADMIN" ? admin : userRole === "SUPERVISOR" ? supervisor : officer;
 
     setStandaloneMode(true);
     setCurrentUser(signedInUser);
@@ -442,32 +479,14 @@ export default function App() {
   const unreadCount = notifications.filter((item) => !item.readAt).length;
   const selectedRecordings = localEvidence.filter((record) => record.type === "AUDIO" && record.selectedForDraft);
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.heroShell}>
-          <View style={styles.heroBrandRow}>
+  if (!currentUser) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.loginScreen}>
+          <View style={styles.loginBrand}>
             <BrandLockup />
-            <View style={styles.heroMetrics}>
-              <MetricCard label="Active incident" value={selectedIncident ? selectedIncident.caseNumber : "None"} tone="accent" />
-              <MetricCard label="Unread alerts" value={String(unreadCount)} tone={unreadCount > 0 ? "warning" : "success"} />
-            </View>
           </View>
-          <Text style={styles.heroHeadline}>Five modules. Less hunting. Faster reports.</Text>
-          <Text style={styles.heroBody}>
-            Offense One now groups field work into Recording, Event, History, Supervisor, and Settings so the app follows the way the call actually unfolds.
-          </Text>
-          <View style={styles.heroRibbonRow}>
-            <AppButton label="Recording" onPress={() => setScreen("recording")} variant="secondary" />
-            <AppButton label="Event" onPress={() => setScreen("event")} variant="secondary" />
-            <AppButton label="History" onPress={() => setScreen("history")} variant="secondary" />
-            <AppButton label="Supervisor" onPress={() => setScreen("supervisor")} variant="secondary" />
-            <AppButton label="Settings" onPress={() => setScreen("settings")} variant="secondary" />
-          </View>
-        </View>
-
-        {!currentUser ? (
-          <SectionCard title="Offense One Login" subtitle={status}>
+          <SectionCard title="Sign In" subtitle={status}>
             <View style={styles.loginPanel}>
               <View style={styles.roleRow}>
                 <AppButton label="Officer" onPress={() => setLoginRole("OFFICER")} variant={loginRole === "OFFICER" ? "primary" : "ghost"} />
@@ -502,26 +521,25 @@ export default function App() {
                   disabled={loginBusy}
                 />
                 <AppButton label={biometricsReady ? "Use Biometrics" : "Use Saved Login"} onPress={signInWithSavedLogin} disabled={loginBusy || !savedLogin} variant="secondary" />
-                <AppButton label="Keycloak / Agency Login" onPress={signInWithKeycloak} disabled={loginBusy} variant="ghost" />
+                <AppButton label="Agency Login" onPress={signInWithKeycloak} disabled={loginBusy} variant="ghost" />
               </View>
-              <Text style={styles.loginHint}>
-                Credentials: officer@example.gov, supervisor@example.gov, or admin@example.gov with password ChangeMe123!. You can change these under Settings after signing in.
-              </Text>
             </View>
           </SectionCard>
-        ) : (
-          <SectionCard title="Session" subtitle={status}>
-            <View style={styles.identityRow}>
-              <Tag label={standaloneMode ? "Standalone mode" : "Live mode"} active />
-              <Tag label={`${currentUser.role} / ${currentUser.fullName}`} />
-              {currentUser.badgeNumber ? <Tag label={`Badge ${currentUser.badgeNumber}`} /> : null}
-            </View>
-            <View style={styles.actionGrid}>
-              <AppButton label="Refresh Data" onPress={() => refreshIncidents().catch(() => undefined)} variant="secondary" />
-              <AppButton label="Sign Out" onPress={() => void signOut()} variant="ghost" />
-            </View>
-          </SectionCard>
-        )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.topBar}>
+          <BrandLockup />
+          <View style={styles.identityRow}>
+            <Tag label={`${currentUser.role} / ${currentUser.fullName}`} />
+            <AppButton label="Sign Out" onPress={() => void signOut()} variant="ghost" />
+          </View>
+        </View>
 
         <View style={styles.quickStats}>
           <MetricCard label="Events" value={String(incidents.length)} />
@@ -548,22 +566,26 @@ export default function App() {
         ) : null}
 
         {screen === "event" ? (
-          <View style={styles.sectionStack}>
-            <NewIncidentScreen
-              currentUser={currentUser}
-              incidents={incidents}
-              supervisors={supervisors}
-              localMode={standaloneMode}
-              onCreated={refreshIncidents}
-              onLocalCreated={createLocalIncident}
-              onLocalAssigned={assignLocalSupervisor}
-              onSelectIncident={setSelectedIncidentId}
-              selectedIncidentId={selectedIncidentId}
-            />
-            <CameraCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshLocalEvidence} />
-            <SectionCard title="Draft Evidence Selection" subtitle="Select exactly which recordings and photos should support the draft narrative.">
+          <SectionCard title="Event" subtitle={status}>
+            <TextInput value={caseNumber} onChangeText={setCaseNumber} placeholder="Case number" placeholderTextColor={theme.colors.muted} style={styles.input} />
+            <TextInput value={eventTitle} onChangeText={setEventTitle} placeholder="Incident title" placeholderTextColor={theme.colors.muted} style={styles.input} />
+            <TextInput value={eventLocation} onChangeText={setEventLocation} placeholder="Location" placeholderTextColor={theme.colors.muted} style={styles.input} />
+            <View style={styles.actionGrid}>
+              <AppButton label="Create Incident" onPress={createEventFromForm} />
+              {incidents.map((incident) => (
+                <AppButton
+                  key={incident.id}
+                  label={selectedIncidentId === incident.id ? `${incident.caseNumber} Selected` : `Open ${incident.caseNumber}`}
+                  onPress={() => setSelectedIncidentId(incident.id)}
+                  variant={selectedIncidentId === incident.id ? "secondary" : "ghost"}
+                />
+              ))}
+            </View>
+
+            <View style={styles.eventDivider} />
+            <Text style={styles.eventSectionTitle}>Recordings and Photos for Draft</Text>
               {localEvidence.length === 0 ? (
-                <EmptyState title="No saved evidence yet" body="Use Recording to save audio or the camera section above to save photos for this event." />
+                <EmptyState title="No saved evidence yet" body="Save recordings from the Recording module or take photos below." />
               ) : (
                 localEvidence.map((record) => (
                   <View key={record.id} style={[styles.evidenceCard, record.selectedForDraft ? styles.evidenceCardSelected : null]}>
@@ -582,9 +604,24 @@ export default function App() {
                   </View>
                 ))
               )}
-            </SectionCard>
-            <DraftReportScreen currentUser={currentUser} selectedIncident={selectedIncident} onRefresh={refreshIncidents} onLocalReportGenerated={generateLocalReport} />
-          </View>
+
+            <View style={styles.eventDivider} />
+            <CameraCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshLocalEvidence} compact />
+
+            <View style={styles.eventDivider} />
+            <TextInput
+              value={draftNotes}
+              onChangeText={setDraftNotes}
+              placeholder="Draft notes"
+              placeholderTextColor={theme.colors.muted}
+              style={[styles.input, styles.multiline]}
+              multiline
+            />
+            <View style={styles.actionGrid}>
+              <AppButton label="Generate Draft Narrative" onPress={generateEventDraft} disabled={!selectedIncident} />
+            </View>
+            {selectedIncident?.generatedReports[0] ? <Text style={styles.draftPreview}>{selectedIncident.generatedReports[0].body}</Text> : null}
+          </SectionCard>
         ) : null}
 
         {screen === "history" ? (
@@ -648,6 +685,22 @@ const styles = StyleSheet.create({
   container: {
     padding: theme.spacing.lg,
     gap: theme.spacing.lg
+  },
+  loginScreen: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: theme.spacing.lg,
+    gap: theme.spacing.lg
+  },
+  loginBrand: {
+    alignItems: "center"
+  },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.md,
+    flexWrap: "wrap"
   },
   heroMetrics: {
     gap: theme.spacing.sm
@@ -904,5 +957,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: theme.colors.muted
+  },
+  eventDivider: {
+    height: 1,
+    backgroundColor: theme.colors.border,
+    marginVertical: theme.spacing.xs
+  },
+  eventSectionTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: theme.colors.ink
+  },
+  multiline: {
+    minHeight: 110,
+    textAlignVertical: "top"
+  },
+  draftPreview: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.md,
+    color: theme.colors.text,
+    fontSize: 15,
+    lineHeight: 22
   }
 });

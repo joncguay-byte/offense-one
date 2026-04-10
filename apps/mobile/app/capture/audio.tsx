@@ -6,7 +6,7 @@ import { loadRecordingCueSettings, saveRecordingCueSettings, type RecordingCueVo
 import { loadLocalEvidence, saveLocalAudioEvidence, type LocalEvidenceRecord } from "../../src/lib/local-evidence";
 import { buildToneDataUri, getCueVolumeLevel } from "../../src/lib/recording-cues";
 import type { AuthUser } from "../../src/lib/api";
-import { AppButton, HeroCard, MetricCard, Screen, SectionCard, Tag } from "../../src/ui/components";
+import { AppButton, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { theme } from "../../src/ui/theme";
 
 type Props = {
@@ -32,8 +32,8 @@ function describeInput(input: RecordingInput) {
 export default function AudioCaptureScreen({ currentUser, selectedIncidentId, onUploaded, onEvidenceSaved }: Props) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
-  const startTonePlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(1046, 140) }), []);
-  const stopTonePlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(784, 180) }), []);
+  const startTonePlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(1760, 220) }), []);
+  const stopTonePlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(988, 240) }), []);
   const [recordingUri, setRecordingUri] = useState("");
   const [referenceReady, setReferenceReady] = useState(false);
   const [profileReady, setProfileReady] = useState(false);
@@ -316,14 +316,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
 
   return (
     <Screen>
-      <HeroCard
-        eyebrow="Recording"
-        title="Start, stop, and preserve the audio"
-        body="This module keeps the field action simple: start recording, stop recording, then save each clip below by date and time."
-        right={<MetricCard label="Incident" value={selectedIncidentId ? "Ready" : "Missing"} tone={selectedIncidentId ? "success" : "warning"} />}
-      />
-
-      <SectionCard title="Recording Controls" subtitle="Record and stop with audible cues. Bluetooth and cue preferences live under Settings.">
+      <SectionCard title="Recording Controls">
         <View style={styles.primaryRecordPanel}>
           <Text style={styles.primaryRecordTitle}>{recorderState.isRecording ? "Recording in progress" : "Ready to record"}</Text>
           <Text style={styles.primaryRecordBody}>
@@ -356,18 +349,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
         </View>
       </SectionCard>
 
-      <SectionCard title="Session Status" subtitle={status}>
-        <Text style={styles.panelCopy}>
-          {recordingUri
-            ? selectedIncidentId?.startsWith("local-")
-              ? "Audio captured locally. Save it to this incident to copy it into the app's Offense One evidence folder."
-              : "Audio captured locally. Save it as a reusable officer profile, attach it to this incident as a reference clip, or upload it as scene audio."
-            : "No captured file is attached yet."}
-        </Text>
-        {recordingUri ? <Text style={styles.path}>{recordingUri}</Text> : null}
-      </SectionCard>
-
-      <SectionCard title="Recordings by Date and Time" subtitle="Newest saved recordings appear first. Use the Event module to choose which recordings support the draft report.">
+      <SectionCard title="Recordings by Date and Time" subtitle={status}>
         {localRecordings.length === 0 ? (
           <Text style={styles.panelCopy}>No saved recordings for this event yet.</Text>
         ) : (

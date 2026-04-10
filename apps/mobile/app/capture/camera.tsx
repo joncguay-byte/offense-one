@@ -11,9 +11,10 @@ type Props = {
   currentUser?: AuthUser | null;
   selectedIncidentId: string | null;
   onUploaded: () => Promise<void>;
+  compact?: boolean;
 };
 
-export default function CameraCaptureScreen({ currentUser, selectedIncidentId, onUploaded }: Props) {
+export default function CameraCaptureScreen({ currentUser, selectedIncidentId, onUploaded, compact }: Props) {
   const cameraRef = useRef<CameraView | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [photoUri, setPhotoUri] = useState("");
@@ -73,6 +74,14 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
   }
 
   if (!permission.granted) {
+    if (compact) {
+      return (
+        <View style={styles.compactShell}>
+          <AppButton label="Allow Camera" onPress={requestPermission} />
+        </View>
+      );
+    }
+
     return (
       <Screen>
         <HeroCard
@@ -87,6 +96,37 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
     );
   }
 
+  const cameraContent = (
+    <>
+      <View style={styles.tagRow}>
+        <Tag label={selectedIncidentId || "No incident selected"} active={!!selectedIncidentId} />
+        <Tag label={photoUri ? "Photo captured" : "Awaiting capture"} tone={photoUri ? "success" : "warning"} />
+        <Tag label={captureKind === "CALL_FOR_SERVICE" ? "Call for service" : "Scene photo"} active />
+      </View>
+      <View style={styles.row}>
+        <AppButton label="Scene Photo" onPress={() => setCaptureKind("SCENE")} variant={captureKind === "SCENE" ? "primary" : "ghost"} />
+        <AppButton label="Call Photo" onPress={() => setCaptureKind("CALL_FOR_SERVICE")} variant={captureKind === "CALL_FOR_SERVICE" ? "primary" : "ghost"} />
+      </View>
+      <View style={styles.cameraShell}>
+        <CameraView ref={cameraRef} style={styles.camera} facing="back" />
+      </View>
+      <View style={styles.row}>
+        <AppButton label="Capture Photo" onPress={capturePhoto} disabled={busy} />
+        <AppButton
+          label={selectedIncidentId?.startsWith("local-") ? "Save Photo to Event" : captureKind === "CALL_FOR_SERVICE" ? "Upload Call Photo" : "Upload Scene Photo"}
+          onPress={uploadPhoto}
+          disabled={busy || !photoUri}
+          variant="secondary"
+        />
+      </View>
+      <Text style={styles.panelCopy}>{status}</Text>
+    </>
+  );
+
+  if (compact) {
+    return <View style={styles.compactShell}>{cameraContent}</View>;
+  }
+
   return (
     <Screen>
       <HeroCard
@@ -95,34 +135,7 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
         body="Capture a scene image, attach it to the active incident, and make it available to the review workflow."
         right={<MetricCard label="Incident" value={selectedIncidentId ? "Ready" : "Missing"} tone={selectedIncidentId ? "success" : "warning"} />}
       />
-
-      <SectionCard title="Live View" subtitle="Use the rear camera to capture the broad scene before zooming into details.">
-        <View style={styles.tagRow}>
-          <Tag label={selectedIncidentId || "No incident selected"} active={!!selectedIncidentId} />
-          <Tag label={photoUri ? "Photo captured" : "Awaiting capture"} tone={photoUri ? "success" : "warning"} />
-          <Tag label={captureKind === "CALL_FOR_SERVICE" ? "Call for service" : "Scene photo"} active />
-        </View>
-        <View style={styles.row}>
-          <AppButton label="Scene Photo" onPress={() => setCaptureKind("SCENE")} variant={captureKind === "SCENE" ? "primary" : "ghost"} />
-          <AppButton label="Call Photo" onPress={() => setCaptureKind("CALL_FOR_SERVICE")} variant={captureKind === "CALL_FOR_SERVICE" ? "primary" : "ghost"} />
-        </View>
-        <View style={styles.cameraShell}>
-          <CameraView ref={cameraRef} style={styles.camera} facing="back" />
-        </View>
-        <View style={styles.row}>
-          <AppButton label="Capture Photo" onPress={capturePhoto} disabled={busy} />
-          <AppButton
-            label={selectedIncidentId?.startsWith("local-") ? "Save Photo to Event" : captureKind === "CALL_FOR_SERVICE" ? "Upload Call Photo" : "Upload Scene Photo"}
-            onPress={uploadPhoto}
-            disabled={busy || !photoUri}
-            variant="secondary"
-          />
-        </View>
-      </SectionCard>
-
-      <SectionCard title="Capture Status" subtitle={status}>
-        {photoUri ? <Text style={styles.path}>{photoUri}</Text> : <Text style={styles.panelCopy}>No local image is attached yet.</Text>}
-      </SectionCard>
+      <SectionCard title="Live View">{cameraContent}</SectionCard>
     </Screen>
   );
 }
@@ -161,5 +174,8 @@ const styles = StyleSheet.create({
   path: {
     fontSize: 12,
     color: theme.colors.muted
+  },
+  compactShell: {
+    gap: theme.spacing.sm
   }
 });
