@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { createAudioPlayer } from "expo-audio";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { JobRecord, NotificationRecord } from "./src/lib/shared-types";
 import AudioCaptureScreen from "./app/capture/audio";
@@ -34,7 +35,7 @@ import {
   type SavedLogin
 } from "./src/lib/auth-preferences";
 import { registerForExpoPushToken } from "./src/lib/push";
-import { loadLocalEvidence, setLocalEvidenceSelected, type LocalEvidenceRecord } from "./src/lib/local-evidence";
+import { deleteLocalEvidenceForIncident, loadLocalEvidence, setLocalEvidenceSelected, type LocalEvidenceRecord } from "./src/lib/local-evidence";
 import { BrandLockup } from "./src/ui/brand";
 import { AppButton, EmptyState, MetricCard, SectionCard, Tag } from "./src/ui/components";
 import { formatDateTime, theme } from "./src/ui/theme";
@@ -56,6 +57,7 @@ export default function App() {
   const [supervisors, setSupervisors] = useState<AuthUser[]>([]);
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [archivedIncidentIds, setArchivedIncidentIds] = useState<string[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [status, setStatus] = useState("Sign in to begin field capture.");
   const [standaloneMode, setStandaloneMode] = useState(false);
@@ -71,6 +73,7 @@ export default function App() {
   const [draftNotes, setDraftNotes] = useState("");
   const [biometricsReady, setBiometricsReady] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
+  const eventPlaybackPlayer = useMemo(() => createAudioPlayer(null), []);
 
   const selectedIncident = useMemo(
     () => incidents.find((incident) => incident.id === selectedIncidentId) || null,
@@ -195,6 +198,43 @@ export default function App() {
     setCaseNumber(incident.caseNumber);
     setEventTitle(incident.title);
     setEventLocation(incident.location || "");
+  }
+
+  async function deleteSelectedIncident() {
+    if (!selectedIncident) {
+      setStatus("Select an incident first.");
+      return;
+    }
+
+    await deleteLocalEvidenceForIncident(selectedIncident.id);
+    setIncidents((current) => current.filter((incident) => incident.id !== selectedIncident.id));
+    setArchivedIncidentIds((current) => current.filter((incidentId) => incidentId !== selectedIncident.id));
+    setSelectedIncidentId(null);
+    setLocalEvidence([]);
+    setCaseNumber("");
+    setEventTitle("");
+    setEventLocation("");
+    setStatus("Incident deleted.");
+  }
+
+  function archiveSelectedIncident() {
+    if (!selectedIncident) {
+      setStatus("Select an incident first.");
+      return;
+    }
+
+    setArchivedIncidentIds((current) => (current.includes(selectedIncident.id) ? current : [...current, selectedIncident.id]));
+    setStatus("Incident archived.");
+  }
+
+  function restoreSelectedIncident() {
+    if (!selectedIncident) {
+      setStatus("Select an incident first.");
+      return;
+    }
+
+    setArchivedIncidentIds((current) => current.filter((incidentId) => incidentId !== selectedIncident.id));
+    setStatus("Incident restored.");
   }
 
   function assignLocalSupervisor(incidentId: string, supervisor: AuthUser) {
@@ -514,6 +554,18 @@ export default function App() {
     await refreshLocalEvidence();
   }
 
+  async function playEventRecording(record: LocalEvidenceRecord) {
+    try {
+      eventPlaybackPlayer.pause();
+      eventPlaybackPlayer.replace({ uri: record.savedUri });
+      eventPlaybackPlayer.volume = 1;
+      eventPlaybackPlayer.play();
+      setStatus(`Playing: ${record.fileName}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to play recording.");
+    }
+  }
+
   const unreadCount = notifications.filter((item) => !item.readAt).length;
   const audioRecordings = localEvidence.filter((record) => record.type === "AUDIO");
   const selectedRecordings = localEvidence.filter((record) => record.type === "AUDIO" && record.selectedForDraft);
@@ -612,6 +664,8 @@ export default function App() {
             <View style={styles.actionGrid}>
               <AppButton label={selectedIncident ? "Save Event Details" : "Create Incident"} onPress={saveSelectedEventDetails} />
               <AppButton label="Create New Event" onPress={createEventFromForm} variant="secondary" />
+              <AppButton label={selectedIncident && archivedIncidentIds.includes(selectedIncident.id) ? "Restore Incident" : "Archive Incident"} onPress={selectedIncident && archivedIncidentIds.includes(selectedIncident.id) ? restoreSelectedIncident : archiveSelectedIncident} disabled={!selectedIncident} variant="ghost" />
+              <AppButton label="Delete Incident" onPress={() => void deleteSelectedIncident()} disabled={!selectedIncident} variant="danger" />
               {incidents.map((incident) => (
                 <AppButton
                   key={incident.id}
@@ -636,6 +690,7 @@ export default function App() {
                         <Text style={styles.evidenceMeta}>{formatDateTime(record.createdAt)}</Text>
                         <Text style={styles.evidenceMeta}>{record.fileName}</Text>
                       </View>
+                      <AppButton label="Play" onPress={() => void playEventRecording(record)} variant="secondary" />
                     </View>
                   </View>
                 ))
@@ -673,7 +728,9 @@ export default function App() {
                     <View style={styles.evidenceCopy}>
                       <Text style={styles.evidenceTitle}>{incident.caseNumber}</Text>
                       <Text style={styles.evidenceMeta}>{incident.title}</Text>
-                      <Text style={styles.evidenceMeta}>{formatDateTime(incident.occurredAt)} / {incident.status}</Text>
+                      <Text style={styles.evidenceMeta}>
+                        {formatDateTime(incident.occurredAt)} / {archivedIncidentIds.includes(incident.id) ? "ARCHIVED" : incident.status}
+                      </Text>
                     </View>
                     <AppButton
                       label={selectedIncidentId === incident.id ? "Selected" : "Open"}

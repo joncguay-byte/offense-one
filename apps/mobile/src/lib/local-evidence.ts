@@ -127,6 +127,30 @@ export async function deleteLocalEvidence(recordId: string) {
   return record || null;
 }
 
+export async function deleteLocalEvidenceForIncident(incidentId: string) {
+  const records = await loadManifest();
+  const incidentRecords = records.filter((record) => record.incidentId === incidentId);
+
+  for (const record of incidentRecords) {
+    if (!record.savedUri) {
+      continue;
+    }
+
+    try {
+      const file = new File(record.savedUri);
+      if (file.exists) {
+        file.delete();
+      }
+    } catch {
+      // Keep deleting the rest of the incident even if one file is already gone.
+    }
+  }
+
+  const nextRecords = records.filter((record) => record.incidentId !== incidentId);
+  await saveManifest(nextRecords);
+  return incidentRecords;
+}
+
 export async function loadLocalEvidence(incidentId?: string | null) {
   const records = await loadManifest();
   return incidentId ? records.filter((record) => record.incidentId === incidentId) : records;

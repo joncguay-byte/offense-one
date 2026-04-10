@@ -34,6 +34,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
   const recorderState = useAudioRecorderState(recorder);
   const startTonePlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(1760, 220) }), []);
   const stopTonePlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(988, 240) }), []);
+  const playbackPlayer = useMemo(() => createAudioPlayer(null), []);
   const [recordingUri, setRecordingUri] = useState("");
   const [referenceReady, setReferenceReady] = useState(false);
   const [profileReady, setProfileReady] = useState(false);
@@ -262,6 +263,18 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
     }
   }
 
+  async function playRecording(record: LocalEvidenceRecord) {
+    try {
+      playbackPlayer.pause();
+      playbackPlayer.replace({ uri: record.savedUri });
+      playbackPlayer.volume = 1;
+      playbackPlayer.play();
+      setStatus(`Playing: ${record.fileName}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to play recording.");
+    }
+  }
+
   async function uploadRecording() {
     if (!selectedIncidentId || !recordingUri) {
       setStatus("Select an incident and capture audio first.");
@@ -385,6 +398,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
               <Text style={styles.panelCopy}>{record.fileName}</Text>
               <Text style={styles.path}>{record.savedUri}</Text>
               <View style={styles.row}>
+                <AppButton label="Play" onPress={() => void playRecording(record)} disabled={busy} variant="secondary" />
                 <AppButton label="Delete" onPress={() => void deleteRecording(record.id)} disabled={busy} variant="danger" />
               </View>
             </View>
