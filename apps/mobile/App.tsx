@@ -20,15 +20,18 @@ import {
   signInOfficer,
   signInSupervisor
 } from "./src/features/reporting";
-import type { AuthUser, IncidentRecord } from "./src/lib/api";
+import { setSessionToken, type AuthUser, type IncidentRecord } from "./src/lib/api";
 import {
   canUseBiometrics,
   clearLoginPreference,
   getLocalUser,
   isLocalCredential,
+  loadLocalUser,
   loadLoginPreference,
+  saveLocalAccountProfile,
   saveLoginPreference,
   unlockWithBiometrics,
+  type LocalAccountProfile,
   type LocalLoginRole,
   type SavedLogin
 } from "./src/lib/auth-preferences";
@@ -211,12 +214,13 @@ export default function App() {
     }
   }
 
-  function ensureLocalIncident(userRole: LocalLoginRole) {
-    const officer = getLocalUser("OFFICER");
-    const supervisor = getLocalUser("SUPERVISOR");
+  async function ensureLocalIncident(userRole: LocalLoginRole) {
+    const officer = await loadLocalUser("OFFICER");
+    const supervisor = await loadLocalUser("SUPERVISOR");
+    const signedInUser = userRole === "SUPERVISOR" ? supervisor : officer;
 
     setStandaloneMode(true);
-    setCurrentUser(getLocalUser(userRole));
+    setCurrentUser(signedInUser);
     setSupervisors([supervisor]);
     setIncidents([
       {
@@ -268,13 +272,13 @@ export default function App() {
         await completeSignIn(session.user, "Signed in");
       }
     } catch {
-      if (!isLocalCredential(loginEmail, loginPassword, role)) {
-        setStatus("Login failed. Use officer@example.gov or supervisor@example.gov with ChangeMe123!, or connect agency login.");
+      if (!(await isLocalCredential(loginEmail, loginPassword, role))) {
+        setStatus("Login failed. Check the saved username/password for this role, or connect agency login.");
         return;
       }
 
       await persistLoginIfNeeded(role);
-      ensureLocalIncident(role);
+      await ensureLocalIncident(role);
     } finally {
       setLoginBusy(false);
     }
@@ -306,10 +310,49 @@ export default function App() {
           return;
         }
       }
-      ensureLocalIncident(savedLogin.role);
+      if (!(await isLocalCredential(savedLogin.email, savedLogin.password, savedLogin.role))) {
+        setStatus("Saved login no longer matches this device account. Enter the updated password.");
+        return;
+      }
+      await ensureLocalIncident(savedLogin.role);
     } finally {
       setLoginBusy(false);
     }
+  }
+
+  async function handleLocalAccountUpdated(profile: LocalAccountProfile) {
+    const user = await saveLocalAccountProfile(profile);
+    if (currentUser?.role === profile.role) {
+      setCurrentUser(user);
+      setLoginEmail(profile.email);
+      setLoginPassword(profile.password);
+      setLoginRole(profile.role);
+      if (rememberLogin) {
+        const nextLogin = { email: profile.email, password: profile.password, role: profile.role };
+        await saveLoginPreference(nextLogin);
+        setSavedLogin(nextLogin);
+      }
+      setIncidents((current) =>
+        current.map((incident) =>
+          profile.role === "SUPERVISOR"
+            ? { ...incident, assignedSupervisorId: user.id, assignedSupervisor: user }
+            : { ...incident, createdById: user.id, createdBy: user }
+        )
+      );
+    }
+    setStatus(`${profile.role === "SUPERVISOR" ? "Supervisor" : "Officer"} account updated.`);
+  }
+
+  async function signOut() {
+    setSessionToken(null);
+    setCurrentUser(null);
+    setStandaloneMode(false);
+    setSelectedIncidentId(null);
+    setIncidents([]);
+    setJobs([]);
+    setNotifications([]);
+    setScreen("home");
+    setStatus("Signed out. Use your saved login, biometrics, or username and password to continue.");
   }
 
   async function signInWithKeycloak() {
@@ -436,7 +479,7 @@ export default function App() {
             </View>
             <View style={styles.actionGrid}>
               <AppButton label="Refresh Data" onPress={() => refreshIncidents().catch(() => undefined)} variant="secondary" />
-              <AppButton label="Logout" onPress={() => setCurrentUser(null)} variant="ghost" />
+              <AppButton label="Sign Out" onPress={() => void signOut()} variant="ghost" />
             </View>
           </SectionCard>
         )}
@@ -543,7 +586,7 @@ export default function App() {
         {screen === "report" ? <DraftReportScreen currentUser={currentUser} selectedIncident={selectedIncident} onRefresh={refreshIncidents} onLocalReportGenerated={generateLocalReport} /> : null}
         {screen === "jobs" ? <JobsScreen jobs={jobs} selectedIncidentId={selectedIncidentId} /> : null}
         {screen === "notifications" ? <NotificationsScreen notifications={notifications} onRead={handleReadNotification} /> : null}
-        {screen === "settings" ? <SettingsScreen /> : null}
+        {screen === "settings" ? <SettingsScreen currentUser={currentUser} onLocalAccountUpdated={handleLocalAccountUpdated} onSignOut={signOut} /> : null}
       </ScrollView>
     </SafeAreaView>
   );

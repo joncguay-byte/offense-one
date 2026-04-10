@@ -1,11 +1,22 @@
-import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { createAudioPlayer } from "expo-audio";
 import { AppButton, HeroCard, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { loadRecordingCueSettings, saveRecordingCueSettings, type RecordingCueSettings, type RecordingCueVolume } from "../../src/lib/audio-settings";
+import { loadLocalAccountProfiles, type LocalAccountProfile } from "../../src/lib/auth-preferences";
+import { buildToneDataUri, getCueVolumeLevel } from "../../src/lib/recording-cues";
+import type { AuthUser } from "../../src/lib/api";
 import { loadMyVoiceProfile, removeMyVoiceProfile } from "../../src/features/reporting";
 import { theme } from "../../src/ui/theme";
 
-export default function SettingsScreen() {
+type Props = {
+  currentUser: AuthUser | null;
+  onLocalAccountUpdated: (profile: LocalAccountProfile) => Promise<void>;
+  onSignOut: () => Promise<void>;
+};
+
+export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onSignOut }: Props) {
+  const cuePreviewPlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(1046, 140) }), []);
   const [settings, setSettings] = useState<RecordingCueSettings>({
     enabled: true,
     volume: "standard",
@@ -15,6 +26,10 @@ export default function SettingsScreen() {
     queueAlertsEnabled: true
   });
   const [hasVoiceProfile, setHasVoiceProfile] = useState(false);
+  const [accountName, setAccountName] = useState(currentUser?.fullName || "");
+  const [accountEmail, setAccountEmail] = useState(currentUser?.email || "");
+  const [accountBadge, setAccountBadge] = useState(currentUser?.badgeNumber || "");
+  const [accountPassword, setAccountPassword] = useState("");
   const [status, setStatus] = useState("Loading saved preferences...");
 
   useEffect(() => {
@@ -32,6 +47,30 @@ export default function SettingsScreen() {
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (!currentUser) {
+      setAccountName("");
+      setAccountEmail("");
+      setAccountBadge("");
+      setAccountPassword("");
+      return;
+    }
+
+    loadLocalAccountProfiles()
+      .then((profiles) => {
+        const profile = profiles[currentUser.role === "SUPERVISOR" ? "SUPERVISOR" : "OFFICER"];
+        setAccountName(profile.fullName);
+        setAccountEmail(profile.email);
+        setAccountBadge(profile.badgeNumber || "");
+        setAccountPassword(profile.password);
+      })
+      .catch(() => {
+        setAccountName(currentUser.fullName);
+        setAccountEmail(currentUser.email);
+        setAccountBadge(currentUser.badgeNumber || "");
+      });
+  }, [currentUser]);
+
   async function updateSettings(nextPartial: Partial<RecordingCueSettings>) {
     const nextSettings = {
       ...settings,
@@ -44,6 +83,36 @@ export default function SettingsScreen() {
 
   async function setCueVolume(volume: RecordingCueVolume) {
     await updateSettings({ volume });
+    try {
+      cuePreviewPlayer.volume = getCueVolumeLevel(volume);
+      cuePreviewPlayer.pause();
+      await cuePreviewPlayer.seekTo(0);
+      cuePreviewPlayer.play();
+      setStatus(`${volume[0].toUpperCase()}${volume.slice(1)} cue preview played.`);
+    } catch {
+      setStatus("Cue volume saved, but this device did not play the preview sound.");
+    }
+  }
+
+  async function saveAccount() {
+    if (!currentUser) {
+      setStatus("Sign in before changing account settings.");
+      return;
+    }
+
+    if (!accountName.trim() || !accountEmail.trim() || !accountPassword) {
+      setStatus("Name, username/email, and password are required.");
+      return;
+    }
+
+    await onLocalAccountUpdated({
+      role: currentUser.role === "SUPERVISOR" ? "SUPERVISOR" : "OFFICER",
+      fullName: accountName.trim(),
+      email: accountEmail.trim(),
+      password: accountPassword,
+      badgeNumber: accountBadge.trim() || null
+    });
+    setStatus("Account name, username, and password saved on this device.");
   }
 
   return (
@@ -68,6 +137,47 @@ export default function SettingsScreen() {
           <AppButton label="Soft" onPress={() => void setCueVolume("soft")} variant={settings.volume === "soft" ? "primary" : "ghost"} />
           <AppButton label="Standard" onPress={() => void setCueVolume("standard")} variant={settings.volume === "standard" ? "primary" : "ghost"} />
           <AppButton label="Loud" onPress={() => void setCueVolume("loud")} variant={settings.volume === "loud" ? "primary" : "ghost"} />
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Account and Sign Out" subtitle="Change the local standalone username/password and sign out when you are done.">
+        <View style={styles.tagRow}>
+          <Tag label={currentUser ? `${currentUser.role}` : "Not signed in"} tone={currentUser ? "success" : "warning"} active />
+        </View>
+        <TextInput
+          value={accountName}
+          onChangeText={setAccountName}
+          placeholder="Display name"
+          placeholderTextColor={theme.colors.muted}
+          style={styles.input}
+        />
+        <TextInput
+          value={accountEmail}
+          onChangeText={setAccountEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          placeholder="Username / email"
+          placeholderTextColor={theme.colors.muted}
+          style={styles.input}
+        />
+        <TextInput
+          value={accountBadge}
+          onChangeText={setAccountBadge}
+          placeholder="Badge number"
+          placeholderTextColor={theme.colors.muted}
+          style={styles.input}
+        />
+        <TextInput
+          value={accountPassword}
+          onChangeText={setAccountPassword}
+          secureTextEntry
+          placeholder="Password"
+          placeholderTextColor={theme.colors.muted}
+          style={styles.input}
+        />
+        <View style={styles.row}>
+          <AppButton label="Save Account Changes" onPress={() => void saveAccount()} disabled={!currentUser} />
+          <AppButton label="Sign Out" onPress={() => void onSignOut()} disabled={!currentUser} variant="ghost" />
         </View>
       </SectionCard>
 
@@ -161,6 +271,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing.sm
+  },
+  input: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    padding: 14,
+    color: theme.colors.ink,
+    fontSize: 16
   },
   preferenceValue: {
     fontSize: 14,

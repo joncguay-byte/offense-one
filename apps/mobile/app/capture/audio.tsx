@@ -3,6 +3,8 @@ import { AudioModule, RecordingInput, RecordingPresets, createAudioPlayer, setAu
 import { StyleSheet, Text, View } from "react-native";
 import { attachAudioEvidence, attachOfficerVoiceReference, loadMyVoiceProfile, saveMyVoiceProfile } from "../../src/features/reporting";
 import { loadRecordingCueSettings, saveRecordingCueSettings, type RecordingCueVolume } from "../../src/lib/audio-settings";
+import { saveLocalAudioEvidence } from "../../src/lib/local-evidence";
+import { buildToneDataUri, getCueVolumeLevel } from "../../src/lib/recording-cues";
 import type { AuthUser } from "../../src/lib/api";
 import { AppButton, HeroCard, MetricCard, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { theme } from "../../src/ui/theme";
@@ -15,60 +17,6 @@ type Props = {
 
 function sleep(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function encodeBase64(bytes: Uint8Array) {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let output = "";
-
-  for (let index = 0; index < bytes.length; index += 3) {
-    const byte1 = bytes[index] ?? 0;
-    const byte2 = bytes[index + 1] ?? 0;
-    const byte3 = bytes[index + 2] ?? 0;
-    const chunk = (byte1 << 16) | (byte2 << 8) | byte3;
-
-    output += alphabet[(chunk >> 18) & 63];
-    output += alphabet[(chunk >> 12) & 63];
-    output += index + 1 < bytes.length ? alphabet[(chunk >> 6) & 63] : "=";
-    output += index + 2 < bytes.length ? alphabet[chunk & 63] : "=";
-  }
-
-  return output;
-}
-
-function buildToneDataUri(frequency: number, durationMs: number) {
-  const sampleRate = 8000;
-  const sampleCount = Math.max(1, Math.floor((sampleRate * durationMs) / 1000));
-  const dataSize = sampleCount * 2;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  const writeText = (offset: number, value: string) => {
-    for (let index = 0; index < value.length; index += 1) {
-      view.setUint8(offset + index, value.charCodeAt(index));
-    }
-  };
-
-  writeText(0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
-  writeText(8, "WAVE");
-  writeText(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeText(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  for (let index = 0; index < sampleCount; index += 1) {
-    const envelope = Math.sin((Math.PI * index) / sampleCount);
-    const sample = Math.sin((2 * Math.PI * frequency * index) / sampleRate) * 0.25 * envelope;
-    view.setInt16(44 + index * 2, Math.round(sample * 32767), true);
-  }
-
-  return `data:audio/wav;base64,${encodeBase64(new Uint8Array(buffer))}`;
 }
 
 function isBluetoothLike(input: RecordingInput) {
@@ -107,9 +55,8 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
     }
 
     const player = type === "start" ? startTonePlayer : stopTonePlayer;
-    const volume = cueVolume === "soft" ? 0.25 : cueVolume === "loud" ? 0.8 : 0.5;
     try {
-      player.volume = volume;
+      player.volume = getCueVolumeLevel(cueVolume);
       player.pause();
       await player.seekTo(0);
       player.play();
@@ -127,6 +74,20 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
     setCueEnabled(merged.enabled);
     setCueVolume(merged.volume);
     await saveRecordingCueSettings(merged);
+  }
+
+  async function previewCueVolume(volume: RecordingCueVolume) {
+    await updateCueSettings({ enabled: true, volume });
+    const player = startTonePlayer;
+    try {
+      player.volume = getCueVolumeLevel(volume);
+      player.pause();
+      await player.seekTo(0);
+      player.play();
+      setStatus(`${volume[0].toUpperCase()}${volume.slice(1)} cue preview played.`);
+    } catch {
+      setStatus("Unable to play cue preview on this device.");
+    }
   }
 
   async function persistPreferredInput(nextPreferredInputUid: string | null) {
@@ -271,8 +232,9 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
     setBusy(true);
     try {
       if (selectedIncidentId.startsWith("local-")) {
+        const saved = await saveLocalAudioEvidence(selectedIncidentId, recordingUri, currentUser?.fullName);
         await onUploaded();
-        setStatus("Audio saved to this incident. Cloud transcription requires the agency API.");
+        setStatus(`Audio saved to this device incident as ${saved.fileName}. It is stored inside the app's Offense One evidence folder.`);
         return;
       }
 
@@ -390,21 +352,23 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
         </View>
         <View style={styles.row}>
           <AppButton label={cueEnabled ? "Turn Cues Off" : "Turn Cues On"} onPress={() => void updateCueSettings({ enabled: !cueEnabled })} variant="secondary" />
-          <AppButton label="Soft" onPress={() => void updateCueSettings({ volume: "soft" })} variant={cueVolume === "soft" ? "primary" : "ghost"} />
-          <AppButton label="Standard" onPress={() => void updateCueSettings({ volume: "standard" })} variant={cueVolume === "standard" ? "primary" : "ghost"} />
-          <AppButton label="Loud" onPress={() => void updateCueSettings({ volume: "loud" })} variant={cueVolume === "loud" ? "primary" : "ghost"} />
+          <AppButton label="Soft" onPress={() => void previewCueVolume("soft")} variant={cueVolume === "soft" ? "primary" : "ghost"} />
+          <AppButton label="Standard" onPress={() => void previewCueVolume("standard")} variant={cueVolume === "standard" ? "primary" : "ghost"} />
+          <AppButton label="Loud" onPress={() => void previewCueVolume("loud")} variant={cueVolume === "loud" ? "primary" : "ghost"} />
         </View>
         <View style={styles.row}>
           <AppButton label="Save Reusable Profile" onPress={saveReusableProfile} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
           <AppButton label="Use as Officer Reference" onPress={uploadOfficerReference} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
-          <AppButton label="Upload Audio" onPress={uploadRecording} disabled={busy || !recordingUri} variant="ghost" />
+          <AppButton label={selectedIncidentId?.startsWith("local-") ? "Save Audio to Incident" : "Upload Audio"} onPress={uploadRecording} disabled={busy || !recordingUri} variant="ghost" />
         </View>
       </SectionCard>
 
       <SectionCard title="Session Status" subtitle={status}>
         <Text style={styles.panelCopy}>
           {recordingUri
-            ? "Audio captured locally. Save it as a reusable officer profile, attach it to this incident as a reference clip, or upload it as scene audio."
+            ? selectedIncidentId?.startsWith("local-")
+              ? "Audio captured locally. Save it to this incident to copy it into the app's Offense One evidence folder."
+              : "Audio captured locally. Save it as a reusable officer profile, attach it to this incident as a reference clip, or upload it as scene audio."
             : "No captured file is attached yet."}
         </Text>
         {recordingUri ? <Text style={styles.path}>{recordingUri}</Text> : null}
