@@ -10,9 +10,10 @@ type Props = {
   currentUser: AuthUser | null;
   selectedIncident: IncidentRecord | null;
   onRefresh: () => Promise<void>;
+  onLocalReportGenerated?: (incidentId: string, body: string, reviewNotes?: string) => void;
 };
 
-export default function DraftReportScreen({ currentUser, selectedIncident, onRefresh }: Props) {
+export default function DraftReportScreen({ currentUser, selectedIncident, onRefresh, onLocalReportGenerated }: Props) {
   const [reviewNotes, setReviewNotes] = useState("");
   const [draftDefaults, setDraftDefaults] = useState({
     defaultNarrativeStyle: "concise" as "concise" | "detailed",
@@ -102,6 +103,20 @@ export default function DraftReportScreen({ currentUser, selectedIncident, onRef
 
     setBusy(true);
     try {
+      if (selectedIncident.id.startsWith("local-") && onLocalReportGenerated) {
+        const body = [
+          `I responded to ${selectedIncident.title || "the call for service"}${selectedIncident.location ? ` at ${selectedIncident.location}` : ""}.`,
+          "Audio and scene context were captured in the mobile app for later review.",
+          "This local trial draft is a placeholder until the hosted backend transcription and AI narrative service are connected.",
+          reviewNotes ? `Review notes: ${reviewNotes}` : ""
+        ]
+          .filter(Boolean)
+          .join(" ");
+        onLocalReportGenerated(selectedIncident.id, body, reviewNotes);
+        setStatus("Local draft generated. Hosted AI drafting requires the backend API.");
+        return;
+      }
+
       const job = await generateDraftNarrative(selectedIncident.id, {
         incidentTitle: selectedIncident.title,
         officerPerspective: "Create a neutral first-person officer narrative grounded in evidence.",
@@ -130,6 +145,11 @@ export default function DraftReportScreen({ currentUser, selectedIncident, onRef
 
     setBusy(true);
     try {
+      if (selectedIncident?.id.startsWith("local-")) {
+        setStatus("Local draft marked approved for trial review.");
+        return;
+      }
+
       const result = await approveNarrative(latestReport.id, reviewNotes);
       await onRefresh();
       const exportJobId = typeof result === "object" && result && "exportJobId" in result ? String(result.exportJobId) : null;
@@ -149,6 +169,11 @@ export default function DraftReportScreen({ currentUser, selectedIncident, onRef
 
     setBusy(true);
     try {
+      if (selectedIncident?.id.startsWith("local-")) {
+        setStatus("Local draft marked rejected for trial review.");
+        return;
+      }
+
       await rejectNarrative(latestReport.id, reviewNotes);
       await onRefresh();
       setStatus("Report rejected for revision.");

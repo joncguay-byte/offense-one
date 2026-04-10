@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { JobRecord, NotificationRecord } from "./src/lib/shared-types";
 import AudioCaptureScreen from "./app/capture/audio";
@@ -21,6 +21,17 @@ import {
   signInSupervisor
 } from "./src/features/reporting";
 import type { AuthUser, IncidentRecord } from "./src/lib/api";
+import {
+  canUseBiometrics,
+  clearLoginPreference,
+  getLocalUser,
+  isLocalCredential,
+  loadLoginPreference,
+  saveLoginPreference,
+  unlockWithBiometrics,
+  type LocalLoginRole,
+  type SavedLogin
+} from "./src/lib/auth-preferences";
 import { registerForExpoPushToken } from "./src/lib/push";
 import { BrandLockup, BrandMark } from "./src/ui/brand";
 import { AppButton, HeroCard, MetricCard, SectionCard, Tag } from "./src/ui/components";
@@ -47,8 +58,15 @@ export default function App() {
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
-  const [status, setStatus] = useState("Sign in as an officer or supervisor to begin.");
-  const [demoMode, setDemoMode] = useState(false);
+  const [status, setStatus] = useState("Sign in to begin field capture.");
+  const [localMode, setLocalMode] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("officer@example.gov");
+  const [loginPassword, setLoginPassword] = useState("ChangeMe123!");
+  const [loginRole, setLoginRole] = useState<LocalLoginRole>("OFFICER");
+  const [rememberLogin, setRememberLogin] = useState(true);
+  const [savedLogin, setSavedLogin] = useState<SavedLogin | null>(null);
+  const [biometricsReady, setBiometricsReady] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
 
   const selectedIncident = useMemo(
     () => incidents.find((incident) => incident.id === selectedIncidentId) || null,
@@ -56,7 +74,7 @@ export default function App() {
   );
 
   async function refreshIncidents() {
-    if (!currentUser || demoMode) {
+    if (!currentUser || localMode) {
       return;
     }
 
@@ -68,7 +86,7 @@ export default function App() {
   }
 
   async function refreshJobs() {
-    if (!currentUser || demoMode) {
+    if (!currentUser || localMode) {
       return;
     }
 
@@ -80,7 +98,7 @@ export default function App() {
   }
 
   async function refreshNotifications() {
-    if (!currentUser || demoMode) {
+    if (!currentUser || localMode) {
       return;
     }
 
@@ -89,7 +107,7 @@ export default function App() {
   }
 
   async function refreshSupervisors() {
-    if (!currentUser || demoMode) {
+    if (!currentUser || localMode) {
       return;
     }
 
@@ -102,9 +120,88 @@ export default function App() {
     await refreshNotifications();
   }
 
+  function createLocalIncident(payload: { caseNumber: string; title: string; location?: string }) {
+    if (!currentUser) {
+      return;
+    }
+
+    const supervisor = supervisors[0] || getLocalUser("SUPERVISOR");
+    const incident: IncidentRecord = {
+      id: `local-${Date.now()}`,
+      caseNumber: payload.caseNumber,
+      title: payload.title,
+      status: "DRAFT",
+      location: payload.location || null,
+      occurredAt: new Date().toISOString(),
+      createdById: currentUser.id,
+      assignedSupervisorId: supervisor.id,
+      createdBy: currentUser,
+      assignedSupervisor: supervisor,
+      participants: [],
+      transcriptDrafts: [],
+      evidenceItems: [],
+      generatedReports: []
+    };
+
+    setIncidents((current) => [incident, ...current]);
+    setSelectedIncidentId(incident.id);
+    setScreen("audio");
+    setStatus("Local incident created. Recorder is ready.");
+  }
+
+  function assignLocalSupervisor(incidentId: string, supervisor: AuthUser) {
+    setIncidents((current) =>
+      current.map((incident) =>
+        incident.id === incidentId
+          ? {
+              ...incident,
+              assignedSupervisorId: supervisor.id,
+              assignedSupervisor: supervisor
+            }
+          : incident
+      )
+    );
+  }
+
+  function generateLocalReport(incidentId: string, body: string, reviewNotes?: string) {
+    setIncidents((current) =>
+      current.map((incident) =>
+        incident.id === incidentId
+          ? {
+              ...incident,
+              status: "REVIEW",
+              generatedReports: [
+                {
+                  id: `local-report-${Date.now()}`,
+                  body,
+                  status: "PENDING_REVIEW",
+                  reviewNotes: reviewNotes || null,
+                  citationsJson: JSON.stringify([
+                    {
+                      sourceType: "LOCAL_TRIAL",
+                      sourceId: incident.id,
+                      sourceLabel: "Local trial evidence",
+                      note: "Generated from locally captured trial context.",
+                      excerpt: "Backend transcription and AI citations require hosted API setup."
+                    }
+                  ]),
+                  confidenceJson: JSON.stringify({
+                    overall: "low",
+                    notes: ["Local trial draft only. Connect the backend API for transcript-backed AI drafting."]
+                  })
+                },
+                ...incident.generatedReports
+              ]
+            }
+          : incident
+      )
+    );
+  }
+
   async function completeSignIn(user: AuthUser, modeLabel: string) {
-    setDemoMode(false);
+    setLocalMode(false);
     setCurrentUser(user);
+    setScreen("audio");
     const expoToken = await registerForExpoPushToken();
     if (expoToken) {
       await registerPushToken("EXPO", expoToken);
@@ -114,21 +211,104 @@ export default function App() {
     }
   }
 
-  async function signInAsOfficer() {
+  function ensureLocalIncident(userRole: LocalLoginRole) {
+    const officer = getLocalUser("OFFICER");
+    const supervisor = getLocalUser("SUPERVISOR");
+
+    setLocalMode(true);
+    setCurrentUser(getLocalUser(userRole));
+    setSupervisors([supervisor]);
+    setIncidents([
+      {
+        id: "local-incident-1",
+        caseNumber: "LOCAL-0001",
+        title: "New Field Recording",
+        status: "DRAFT",
+        location: "Current call for service",
+        occurredAt: new Date().toISOString(),
+        createdById: officer.id,
+        assignedSupervisorId: supervisor.id,
+        createdBy: officer,
+        assignedSupervisor: supervisor,
+        participants: [],
+        transcriptDrafts: [],
+        generatedReports: []
+      }
+    ]);
+    setJobs([]);
+    setNotifications([]);
+    setSelectedIncidentId("local-incident-1");
+    setScreen("audio");
+    setStatus("Signed in locally. Recording, camera, settings, and review screens are available. Backend upload requires hosted API setup.");
+  }
+
+  async function persistLoginIfNeeded(role: LocalLoginRole) {
+    if (rememberLogin) {
+      const nextLogin = { email: loginEmail, password: loginPassword, role };
+      await saveLoginPreference(nextLogin);
+      setSavedLogin(nextLogin);
+      return;
+    }
+
+    await clearLoginPreference();
+    setSavedLogin(null);
+  }
+
+  async function signInWithRole(role: LocalLoginRole) {
+    setLoginBusy(true);
+    setLoginRole(role);
     try {
-      const session = await signInOfficer();
-      await completeSignIn(session.user, "Signed in");
+      if (role === "OFFICER") {
+        const session = await signInOfficer();
+        await persistLoginIfNeeded(role);
+        await completeSignIn(session.user, "Signed in");
+      } else {
+        const session = await signInSupervisor();
+        await persistLoginIfNeeded(role);
+        await completeSignIn(session.user, "Signed in");
+      }
     } catch {
-      launchDemoWalkthrough("OFFICER");
+      if (!isLocalCredential(loginEmail, loginPassword, role)) {
+        setStatus("Login failed. For local trial use officer@example.gov or supervisor@example.gov with ChangeMe123!.");
+        return;
+      }
+
+      await persistLoginIfNeeded(role);
+      ensureLocalIncident(role);
+    } finally {
+      setLoginBusy(false);
     }
   }
 
+  async function signInAsOfficer() {
+    await signInWithRole("OFFICER");
+  }
+
   async function signInAsSupervisor() {
+    await signInWithRole("SUPERVISOR");
+  }
+
+  async function signInWithSavedLogin() {
+    if (!savedLogin) {
+      setStatus("No saved login is available yet.");
+      return;
+    }
+
+    setLoginEmail(savedLogin.email);
+    setLoginPassword(savedLogin.password);
+    setLoginRole(savedLogin.role);
+    setLoginBusy(true);
     try {
-      const session = await signInSupervisor();
-      await completeSignIn(session.user, "Signed in");
-    } catch {
-      launchDemoWalkthrough("SUPERVISOR");
+      if (biometricsReady) {
+        const result = await unlockWithBiometrics();
+        if (!result.success) {
+          setStatus("Biometric unlock was canceled.");
+          return;
+        }
+      }
+      ensureLocalIncident(savedLogin.role);
+    } finally {
+      setLoginBusy(false);
     }
   }
 
@@ -157,12 +337,12 @@ export default function App() {
       badgeNumber: "2001"
     };
 
-    setDemoMode(true);
+    setLocalMode(true);
     setCurrentUser(role === "SUPERVISOR" ? supervisor : officer);
     setSupervisors([supervisor]);
     setIncidents([
       {
-        id: "incident-demo-1",
+        id: "local-incident-demo-1",
         caseNumber: "2026-000123",
         title: "Burglary Report",
         status: "REVIEW",
@@ -203,7 +383,7 @@ export default function App() {
         id: "job-demo-1",
         type: "INGEST_AUDIO",
         status: "COMPLETED",
-        incidentId: "incident-demo-1",
+        incidentId: "local-incident-demo-1",
         createdAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
         resultJson: "{\"transcriptDraftId\":\"t1\"}"
@@ -212,7 +392,7 @@ export default function App() {
         id: "job-demo-2",
         type: "GENERATE_REPORT",
         status: "COMPLETED",
-        incidentId: "incident-demo-1",
+        incidentId: "local-incident-demo-1",
         createdAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
         resultJson: "{\"reportId\":\"r1\"}"
@@ -228,8 +408,8 @@ export default function App() {
         readAt: null
       }
     ]);
-    setSelectedIncidentId("incident-demo-1");
-    setScreen("home");
+    setSelectedIncidentId("local-incident-demo-1");
+    setScreen("audio");
     setStatus(
       role === "SUPERVISOR"
         ? "Supervisor demo session loaded locally. Backend services are bypassed."
@@ -243,6 +423,24 @@ export default function App() {
     });
     refreshSupervisors().catch(() => undefined);
   }, [currentUser]);
+
+  useEffect(() => {
+    loadLoginPreference()
+      .then((login) => {
+        if (!login) {
+          return;
+        }
+        setSavedLogin(login);
+        setLoginEmail(login.email);
+        setLoginPassword(login.password);
+        setLoginRole(login.role);
+      })
+      .catch(() => undefined);
+
+    canUseBiometrics()
+      .then(setBiometricsReady)
+      .catch(() => setBiometricsReady(false));
+  }, []);
 
   useEffect(() => {
     refreshJobs().catch(() => undefined);
@@ -277,45 +475,64 @@ export default function App() {
             Offense One keeps evidence collection, queue status, and narrative review in one mobile workspace so officers and supervisors spend less time hunting through steps.
           </Text>
           <View style={styles.heroRibbonRow}>
-            <Tag label="Multi-speaker audio" />
-            <Tag label="Scene imagery" />
-            <Tag label="Officer-reviewed drafts" />
+            <AppButton label="Multi-speaker Audio" onPress={() => setScreen("audio")} variant="secondary" />
+            <AppButton label="Scene Imagery" onPress={() => setScreen("camera")} variant="secondary" />
+            <AppButton label="Officer-reviewed Drafts" onPress={() => setScreen("report")} variant="secondary" />
           </View>
         </View>
 
         {!currentUser ? (
-          <SectionCard title="Start Your Shift" subtitle={status}>
-            <View style={styles.onboardingGrid}>
-              <View style={styles.onboardingCard}>
-                <Text style={styles.onboardingTitle}>Officer access</Text>
-                <Text style={styles.onboardingBody}>Open an incident, record the scene, and build a first narrative draft without leaving the device workflow.</Text>
-                <AppButton label="Officer Login" onPress={signInAsOfficer} />
+          <SectionCard title="Offense One Login" subtitle={status}>
+            <View style={styles.loginPanel}>
+              <View style={styles.roleRow}>
+                <AppButton label="Officer" onPress={() => setLoginRole("OFFICER")} variant={loginRole === "OFFICER" ? "primary" : "ghost"} />
+                <AppButton label="Supervisor" onPress={() => setLoginRole("SUPERVISOR")} variant={loginRole === "SUPERVISOR" ? "primary" : "ghost"} />
               </View>
-              <View style={styles.onboardingCard}>
-                <Text style={styles.onboardingTitle}>Supervisor access</Text>
-                <Text style={styles.onboardingBody}>Review transcript-backed drafts, respond to queue alerts, and approve reports with less back-and-forth.</Text>
-                <AppButton label="Supervisor Login" onPress={signInAsSupervisor} variant="secondary" />
+              <TextInput
+                value={loginEmail}
+                onChangeText={setLoginEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="Email"
+                placeholderTextColor={theme.colors.muted}
+                style={styles.input}
+              />
+              <TextInput
+                value={loginPassword}
+                onChangeText={setLoginPassword}
+                secureTextEntry
+                placeholder="Password"
+                placeholderTextColor={theme.colors.muted}
+                style={styles.input}
+              />
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>Save login on this device</Text>
+                <Switch value={rememberLogin} onValueChange={setRememberLogin} />
               </View>
-              <View style={styles.onboardingCard}>
-                <Text style={styles.onboardingTitle}>Identity provider</Text>
-                <Text style={styles.onboardingBody}>Use the Keycloak path when you are ready to validate the app against agency-managed accounts.</Text>
-                <AppButton label="Keycloak Login" onPress={signInWithKeycloak} variant="ghost" />
+              <View style={styles.actionGrid}>
+                <AppButton
+                  label={loginRole === "SUPERVISOR" ? "Login as Supervisor" : "Login as Officer"}
+                  onPress={loginRole === "SUPERVISOR" ? signInAsSupervisor : signInAsOfficer}
+                  disabled={loginBusy}
+                />
+                <AppButton label={biometricsReady ? "Use Biometrics" : "Use Saved Login"} onPress={signInWithSavedLogin} disabled={loginBusy || !savedLogin} variant="secondary" />
+                <AppButton label="Keycloak / Agency Login" onPress={signInWithKeycloak} disabled={loginBusy} variant="ghost" />
               </View>
-            </View>
-            <View style={styles.secondaryActionRow}>
-              <AppButton label="Open Demo Walkthrough" onPress={launchDemoWalkthrough} variant="ghost" />
+              <Text style={styles.loginHint}>
+                Trial credentials: officer@example.gov or supervisor@example.gov with password ChangeMe123!. Hosted agency login requires the backend API to be deployed.
+              </Text>
             </View>
           </SectionCard>
         ) : (
           <SectionCard title="Session" subtitle={status}>
             <View style={styles.identityRow}>
-              <Tag label={demoMode ? "Demo mode" : "Live mode"} active />
+              <Tag label={localMode ? "Local trial mode" : "Live mode"} active />
               <Tag label={`${currentUser.role} / ${currentUser.fullName}`} />
               {currentUser.badgeNumber ? <Tag label={`Badge ${currentUser.badgeNumber}`} /> : null}
             </View>
             <View style={styles.actionGrid}>
               <AppButton label="Refresh Data" onPress={() => refreshIncidents().catch(() => undefined)} variant="secondary" />
-              <AppButton label="Open Demo Walkthrough" onPress={launchDemoWalkthrough} variant="ghost" />
+              <AppButton label="Logout" onPress={() => setCurrentUser(null)} variant="ghost" />
             </View>
           </SectionCard>
         )}
@@ -340,6 +557,22 @@ export default function App() {
 
         {screen === "home" ? (
           <View style={styles.sectionStack}>
+            <SectionCard
+              title="Start Recording"
+              subtitle="Audio capture is the primary field action. Use this first, then add scene imagery or review the draft."
+            >
+              <View style={styles.primaryCaptureCard}>
+                <Text style={styles.primaryCaptureTitle}>Ready for field audio</Text>
+                <Text style={styles.primaryCaptureBody}>
+                  Selected incident: {selectedIncident ? `${selectedIncident.caseNumber} / ${selectedIncident.title}` : "none yet"}
+                </Text>
+                <View style={styles.homeActionGrid}>
+                  <AppButton label="Open Recorder" onPress={() => setScreen("audio")} />
+                  <AppButton label="Take Call Photo" onPress={() => setScreen("camera")} variant="secondary" />
+                  <AppButton label="Review Draft" onPress={() => setScreen("report")} variant="ghost" />
+                </View>
+              </View>
+            </SectionCard>
             <SectionCard
               title="Command Overview"
               subtitle="Keep the key field tasks visible and reduce how much hunting the officer has to do."
@@ -392,7 +625,10 @@ export default function App() {
             currentUser={currentUser}
             incidents={incidents}
             supervisors={supervisors}
+            localMode={localMode}
             onCreated={refreshIncidents}
+            onLocalCreated={createLocalIncident}
+            onLocalAssigned={assignLocalSupervisor}
             onSelectIncident={setSelectedIncidentId}
             selectedIncidentId={selectedIncidentId}
           />
@@ -400,7 +636,7 @@ export default function App() {
 
         {screen === "audio" ? <AudioCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshIncidents} /> : null}
         {screen === "camera" ? <CameraCaptureScreen selectedIncidentId={selectedIncidentId} onUploaded={refreshIncidents} /> : null}
-        {screen === "report" ? <DraftReportScreen currentUser={currentUser} selectedIncident={selectedIncident} onRefresh={refreshIncidents} /> : null}
+        {screen === "report" ? <DraftReportScreen currentUser={currentUser} selectedIncident={selectedIncident} onRefresh={refreshIncidents} onLocalReportGenerated={generateLocalReport} /> : null}
         {screen === "jobs" ? <JobsScreen jobs={jobs} selectedIncidentId={selectedIncidentId} /> : null}
         {screen === "notifications" ? <NotificationsScreen notifications={notifications} onRead={handleReadNotification} /> : null}
         {screen === "settings" ? <SettingsScreen /> : null}
@@ -543,6 +779,56 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing.sm
+  },
+  loginPanel: {
+    gap: theme.spacing.md
+  },
+  roleRow: {
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+    flexWrap: "wrap"
+  },
+  input: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    padding: 14,
+    color: theme.colors.ink,
+    fontSize: 16
+  },
+  switchRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: theme.spacing.md
+  },
+  switchLabel: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "700"
+  },
+  loginHint: {
+    color: theme.colors.muted,
+    fontSize: 13,
+    lineHeight: 20
+  },
+  primaryCaptureCard: {
+    backgroundColor: theme.colors.ink,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.sm
+  },
+  primaryCaptureTitle: {
+    color: "#f8fafc",
+    fontSize: 22,
+    fontWeight: "900"
+  },
+  primaryCaptureBody: {
+    color: "#c9d6dc",
+    fontSize: 15,
+    lineHeight: 22
   },
   ruleCard: {
     backgroundColor: theme.colors.surface,

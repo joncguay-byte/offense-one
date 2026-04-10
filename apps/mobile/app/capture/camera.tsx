@@ -43,6 +43,12 @@ export default function CameraCaptureScreen({ selectedIncidentId, onUploaded }: 
 
     setBusy(true);
     try {
+      if (selectedIncidentId.startsWith("local-")) {
+        await onUploaded();
+        setStatus(captureKind === "CALL_FOR_SERVICE" ? "Call-for-service image saved locally for this trial incident." : "Scene image saved locally for this trial incident.");
+        return;
+      }
+
       if (captureKind === "CALL_FOR_SERVICE") {
         await attachCallForServiceImage(selectedIncidentId, photoUri);
       } else {

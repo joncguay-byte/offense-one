@@ -270,6 +270,12 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
 
     setBusy(true);
     try {
+      if (selectedIncidentId.startsWith("local-")) {
+        await onUploaded();
+        setStatus("Audio saved to the local trial incident. Hosted transcription requires the backend API.");
+        return;
+      }
+
       const job = await attachAudioEvidence(selectedIncidentId, recordingUri, currentUser);
       await onUploaded();
       setStatus(`Audio uploaded. Ingest job queued: ${job.jobId}`);
@@ -288,6 +294,13 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
 
     setBusy(true);
     try {
+      if (selectedIncidentId.startsWith("local-")) {
+        await onUploaded();
+        setReferenceReady(true);
+        setStatus("Officer voice reference saved locally for this trial incident.");
+        return;
+      }
+
       await attachOfficerVoiceReference(selectedIncidentId, recordingUri, currentUser);
       await onUploaded();
       setReferenceReady(true);
@@ -307,6 +320,12 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
 
     setBusy(true);
     try {
+      if (currentUser.id.startsWith("local-")) {
+        setProfileReady(true);
+        setStatus("Reusable officer voice profile saved locally for this trial session.");
+        return;
+      }
+
       await saveMyVoiceProfile(recordingUri);
       setProfileReady(true);
       setStatus("Reusable officer voice profile saved. New incidents can use it automatically.");
@@ -351,6 +370,16 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
       </SectionCard>
 
       <SectionCard title="Recording Controls" subtitle="Record, stop, then use the clip as a reusable profile, an incident reference clip, or the main scene recording.">
+        <View style={styles.primaryRecordPanel}>
+          <Text style={styles.primaryRecordTitle}>{recorderState.isRecording ? "Recording in progress" : "Ready to record"}</Text>
+          <Text style={styles.primaryRecordBody}>
+            {selectedInput ? `Input: ${describeInput(selectedInput)}` : "Use the phone microphone or select Bluetooth when available."}
+          </Text>
+          <View style={styles.row}>
+            <AppButton label="START RECORDING" onPress={startRecording} disabled={busy || recorderState.isRecording} />
+            <AppButton label="STOP" onPress={stopRecording} disabled={busy || !recorderState.isRecording} variant="danger" />
+          </View>
+        </View>
         <View style={styles.tagRow}>
           {currentUser ? <Tag label={`Known officer: ${currentUser.fullName}`} tone="success" /> : null}
           {referenceReady ? <Tag label="Voice reference ready" tone="success" /> : null}
@@ -364,10 +393,6 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
           <AppButton label="Soft" onPress={() => void updateCueSettings({ volume: "soft" })} variant={cueVolume === "soft" ? "primary" : "ghost"} />
           <AppButton label="Standard" onPress={() => void updateCueSettings({ volume: "standard" })} variant={cueVolume === "standard" ? "primary" : "ghost"} />
           <AppButton label="Loud" onPress={() => void updateCueSettings({ volume: "loud" })} variant={cueVolume === "loud" ? "primary" : "ghost"} />
-        </View>
-        <View style={styles.row}>
-          <AppButton label="Start Recording" onPress={startRecording} disabled={busy || recorderState.isRecording} />
-          <AppButton label="Stop Recording" onPress={stopRecording} disabled={busy || !recorderState.isRecording} variant="secondary" />
         </View>
         <View style={styles.row}>
           <AppButton label="Save Reusable Profile" onPress={saveReusableProfile} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
@@ -407,5 +432,21 @@ const styles = StyleSheet.create({
   path: {
     fontSize: 12,
     color: theme.colors.muted
+  },
+  primaryRecordPanel: {
+    backgroundColor: theme.colors.ink,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.sm
+  },
+  primaryRecordTitle: {
+    color: "#f8fafc",
+    fontSize: 26,
+    fontWeight: "900"
+  },
+  primaryRecordBody: {
+    color: "#c9d6dc",
+    fontSize: 15,
+    lineHeight: 22
   }
 });

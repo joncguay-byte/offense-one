@@ -9,7 +9,10 @@ type Props = {
   currentUser: AuthUser | null;
   incidents: IncidentRecord[];
   supervisors: AuthUser[];
+  localMode?: boolean;
   onCreated: () => Promise<void>;
+  onLocalCreated?: (payload: { caseNumber: string; title: string; location?: string }) => void;
+  onLocalAssigned?: (incidentId: string, supervisor: AuthUser) => void;
   onSelectIncident: (incidentId: string) => void;
   selectedIncidentId: string | null;
 };
@@ -18,7 +21,10 @@ export default function NewIncidentScreen({
   currentUser,
   incidents,
   supervisors,
+  localMode,
   onCreated,
+  onLocalCreated,
+  onLocalAssigned,
   onSelectIncident,
   selectedIncidentId
 }: Props) {
@@ -41,6 +47,15 @@ export default function NewIncidentScreen({
 
     setBusy(true);
     try {
+      if (localMode && onLocalCreated) {
+        onLocalCreated({ caseNumber, title, location });
+        setCaseNumber("");
+        setTitle("");
+        setLocation("");
+        setStatus("Local trial incident created.");
+        return;
+      }
+
       await createIncidentWorkflow({
         caseNumber,
         title,
@@ -63,6 +78,15 @@ export default function NewIncidentScreen({
   async function assignSelectedSupervisor(incidentId: string, supervisorId: string) {
     setBusy(true);
     try {
+      if (localMode && onLocalAssigned) {
+        const supervisor = supervisors.find((item) => item.id === supervisorId) || currentUser;
+        if (supervisor) {
+          onLocalAssigned(incidentId, supervisor);
+          setStatus("Supervisor assigned locally.");
+        }
+        return;
+      }
+
       await assignSupervisor(incidentId, supervisorId);
       await onCreated();
       setStatus("Supervisor assigned.");
