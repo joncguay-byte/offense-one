@@ -118,8 +118,8 @@ export default function App() {
     try {
       const session = await signInOfficer();
       await completeSignIn(session.user, "Signed in");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to sign in as officer.");
+    } catch {
+      launchDemoWalkthrough("OFFICER");
     }
   }
 
@@ -127,8 +127,8 @@ export default function App() {
     try {
       const session = await signInSupervisor();
       await completeSignIn(session.user, "Signed in");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to sign in as supervisor.");
+    } catch {
+      launchDemoWalkthrough("SUPERVISOR");
     }
   }
 
@@ -141,7 +141,7 @@ export default function App() {
     }
   }
 
-  function launchDemoWalkthrough() {
+  function launchDemoWalkthrough(role: "OFFICER" | "SUPERVISOR" = "OFFICER") {
     const officer: AuthUser = {
       id: "demo-officer-local",
       email: "officer@example.gov",
@@ -158,7 +158,7 @@ export default function App() {
     };
 
     setDemoMode(true);
-    setCurrentUser(officer);
+    setCurrentUser(role === "SUPERVISOR" ? supervisor : officer);
     setSupervisors([supervisor]);
     setIncidents([
       {
@@ -230,7 +230,11 @@ export default function App() {
     ]);
     setSelectedIncidentId("incident-demo-1");
     setScreen("home");
-    setStatus("Demo walkthrough loaded locally. Backend services are bypassed.");
+    setStatus(
+      role === "SUPERVISOR"
+        ? "Supervisor demo session loaded locally. Backend services are bypassed."
+        : "Officer demo session loaded locally. Backend services are bypassed."
+    );
   }
 
   useEffect(() => {
