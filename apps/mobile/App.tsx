@@ -17,9 +17,11 @@ import {
   loadSupervisors,
   readNotification,
   registerPushToken,
+  signInWithPassword,
   signInOidc,
   signInOfficer,
   signInSupervisor,
+  signUpWithPassword,
   generateDraftNarrative,
   getJobStatus,
   ingestDraftAudioEvidence,
@@ -448,22 +450,14 @@ export default function App() {
     setLoginBusy(true);
     setLoginRole(role);
     try {
-      if (role === "ADMIN") {
-        if (!(await isLocalCredential(loginEmail, loginPassword, role))) {
-          setStatus("Admin login failed. Check the saved admin username/password.");
-          return;
-        }
-        await persistLoginIfNeeded(role);
-        await ensureLocalIncident(role);
-      } else if (role === "OFFICER") {
-        const session = await signInOfficer();
-        await persistLoginIfNeeded(role);
-        await completeSignIn(session.user, "Signed in");
-      } else {
-        const session = await signInSupervisor();
-        await persistLoginIfNeeded(role);
-        await completeSignIn(session.user, "Signed in");
-      }
+      const session =
+        loginEmail.trim() && loginPassword
+          ? await signInWithPassword(loginEmail.trim(), loginPassword)
+          : role === "OFFICER"
+            ? await signInOfficer()
+            : await signInSupervisor();
+      await persistLoginIfNeeded(role);
+      await completeSignIn(session.user, "Signed in");
     } catch {
       if (!(await isLocalCredential(loginEmail, loginPassword, role))) {
         setStatus("Login failed. Check the saved username/password for this role, or connect agency login.");
@@ -489,6 +483,19 @@ export default function App() {
 
     setLoginBusy(true);
     try {
+      const session = await signUpWithPassword({
+        email,
+        password,
+        fullName,
+        badgeNumber: signupBadge.trim() || null,
+        role: loginRole
+      });
+      await persistLoginIfNeeded(loginRole);
+      setRememberLogin(true);
+      setAuthMode("signIn");
+      await completeSignIn(session.user, "Account created and signed in");
+      setStatus(`Account created for ${fullName}. You will stay signed in until you log out or the app updates.`);
+    } catch {
       const profile: LocalAccountProfile = {
         email,
         password,
@@ -502,7 +509,7 @@ export default function App() {
       setSavedLogin(nextLogin);
       setRememberLogin(true);
       await ensureLocalIncident(loginRole);
-      setStatus(`Account created for ${fullName}. You will stay signed in until you log out or the app updates.`);
+      setStatus(`Account created locally for ${fullName}. Backend signup was unavailable, so AI drafting will stay in local-only mode until the API is reachable.`);
     } finally {
       setLoginBusy(false);
     }

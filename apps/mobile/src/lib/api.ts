@@ -86,6 +86,19 @@ export function login(email: string, password: string) {
   });
 }
 
+export function signup(payload: {
+  email: string;
+  password: string;
+  fullName: string;
+  badgeNumber?: string | null;
+  role: AuthUser["role"];
+}) {
+  return request<{ token: string; user: AuthUser }>("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export function getCurrentUser() {
   return request<{ user: AuthUser }>("/auth/me");
 }

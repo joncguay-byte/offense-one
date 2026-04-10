@@ -18,6 +18,7 @@ import {
   registerDevicePushToken,
   reviewReport,
   setSessionToken,
+  signup,
   type AuthUser,
   type CreateIncidentPayload,
   uploadMyVoiceProfile
@@ -27,6 +28,24 @@ import { uploadEvidenceFile, type EvidenceItemRecord } from "../lib/api";
 
 export async function signInOfficer() {
   const session = await login("officer@example.gov", "ChangeMe123!");
+  setSessionToken(session.token);
+  return session;
+}
+
+export async function signInWithPassword(email: string, password: string) {
+  const session = await login(email, password);
+  setSessionToken(session.token);
+  return session;
+}
+
+export async function signUpWithPassword(payload: {
+  email: string;
+  password: string;
+  fullName: string;
+  badgeNumber?: string | null;
+  role: AuthUser["role"];
+}) {
+  const session = await signup(payload);
   setSessionToken(session.token);
   return session;
 }
