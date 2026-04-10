@@ -11,6 +11,7 @@ export type SavedLogin = {
   email: string;
   password: string;
   role: LocalLoginRole;
+  sessionVersion?: string | null;
 };
 
 export type LocalAccountProfile = SavedLogin & {
@@ -154,7 +155,8 @@ export async function loadLoginPreference() {
     return {
       email: parsed.email,
       password: parsed.password,
-      role: parsed.role
+      role: parsed.role,
+      sessionVersion: typeof parsed.sessionVersion === "string" ? parsed.sessionVersion : null
     };
   } catch {
     return null;

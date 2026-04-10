@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { createAudioPlayer } from "expo-audio";
+import Constants from "expo-constants";
+import * as Updates from "expo-updates";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { JobRecord, NotificationRecord } from "./src/lib/shared-types";
 import AudioCaptureScreen from "./app/capture/audio";
@@ -51,6 +53,7 @@ const screenOptions: Array<{ key: ScreenKey; title: string }> = [
 ];
 
 export default function App() {
+  const appSessionVersion = Updates.updateId || Updates.runtimeVersion || Constants.expoConfig?.version || "development";
   const [screen, setScreen] = useState<ScreenKey>("recording");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [incidents, setIncidents] = useState<IncidentRecord[]>([]);
@@ -64,6 +67,9 @@ export default function App() {
   const [loginEmail, setLoginEmail] = useState("officer@example.gov");
   const [loginPassword, setLoginPassword] = useState("ChangeMe123!");
   const [loginRole, setLoginRole] = useState<LocalLoginRole>("OFFICER");
+  const [authMode, setAuthMode] = useState<"signIn" | "signUp">("signIn");
+  const [signupName, setSignupName] = useState("");
+  const [signupBadge, setSignupBadge] = useState("");
   const [rememberLogin, setRememberLogin] = useState(true);
   const [savedLogin, setSavedLogin] = useState<SavedLogin | null>(null);
   const [localEvidence, setLocalEvidence] = useState<LocalEvidenceRecord[]>([]);
@@ -352,7 +358,7 @@ export default function App() {
 
   async function persistLoginIfNeeded(role: LocalLoginRole) {
     if (rememberLogin) {
-      const nextLogin = { email: loginEmail, password: loginPassword, role };
+      const nextLogin = { email: loginEmail.trim(), password: loginPassword, role, sessionVersion: appSessionVersion };
       await saveLoginPreference(nextLogin);
       setSavedLogin(nextLogin);
       return;
@@ -395,6 +401,37 @@ export default function App() {
     }
   }
 
+  async function signUpLocalAccount() {
+    const email = loginEmail.trim();
+    const password = loginPassword;
+    const fullName = signupName.trim() || (loginRole === "ADMIN" ? "Admin User" : loginRole === "SUPERVISOR" ? "Supervisor User" : "Officer User");
+
+    if (!email || !password) {
+      setStatus("Email and password are required to create an account.");
+      return;
+    }
+
+    setLoginBusy(true);
+    try {
+      const profile: LocalAccountProfile = {
+        email,
+        password,
+        role: loginRole,
+        fullName,
+        badgeNumber: signupBadge.trim() || null
+      };
+      await saveLocalAccountProfile(profile);
+      const nextLogin = { email, password, role: loginRole, sessionVersion: appSessionVersion };
+      await saveLoginPreference(nextLogin);
+      setSavedLogin(nextLogin);
+      setRememberLogin(true);
+      await ensureLocalIncident(loginRole);
+      setStatus(`Account created for ${fullName}. You will stay signed in until you log out or the app updates.`);
+    } finally {
+      setLoginBusy(false);
+    }
+  }
+
   async function signInAsOfficer() {
     await signInWithRole("OFFICER");
   }
@@ -416,6 +453,10 @@ export default function App() {
     setLoginEmail(savedLogin.email);
     setLoginPassword(savedLogin.password);
     setLoginRole(savedLogin.role);
+    if (savedLogin.sessionVersion !== appSessionVersion) {
+      setStatus("The app was updated. Please sign in again to continue.");
+      return;
+    }
     setLoginBusy(true);
     try {
       if (biometricsReady) {
@@ -443,7 +484,7 @@ export default function App() {
       setLoginPassword(profile.password);
       setLoginRole(profile.role);
       if (rememberLogin) {
-        const nextLogin = { email: profile.email, password: profile.password, role: profile.role };
+        const nextLogin = { email: profile.email, password: profile.password, role: profile.role, sessionVersion: appSessionVersion };
         await saveLoginPreference(nextLogin);
         setSavedLogin(nextLogin);
       }
@@ -460,6 +501,8 @@ export default function App() {
 
   async function signOut() {
     setSessionToken(null);
+    await clearLoginPreference();
+    setSavedLogin(null);
     setCurrentUser(null);
     setStandaloneMode(false);
     setSelectedIncidentId(null);
@@ -468,7 +511,7 @@ export default function App() {
     setNotifications([]);
     setLocalEvidence([]);
     setScreen("recording");
-    setStatus("Signed out. Use your saved login, biometrics, or username and password to continue.");
+    setStatus("Signed out. Enter your email and password to continue.");
   }
 
   async function signInWithKeycloak() {
@@ -489,7 +532,7 @@ export default function App() {
 
   useEffect(() => {
     loadLoginPreference()
-      .then((login) => {
+      .then(async (login) => {
         if (!login) {
           return;
         }
@@ -497,6 +540,18 @@ export default function App() {
         setLoginEmail(login.email);
         setLoginPassword(login.password);
         setLoginRole(login.role);
+        if (login.sessionVersion !== appSessionVersion) {
+          setStatus("The app was updated. Please sign in again to continue.");
+          return;
+        }
+        if (await isLocalCredential(login.email, login.password, login.role)) {
+          setLoginBusy(true);
+          try {
+            await ensureLocalIncident(login.role);
+          } finally {
+            setLoginBusy(false);
+          }
+        }
       })
       .catch(() => undefined);
 
@@ -577,13 +632,33 @@ export default function App() {
           <View style={styles.loginBrand}>
             <BrandLockup />
           </View>
-          <SectionCard title="Sign In" subtitle={status}>
+          <SectionCard title={authMode === "signUp" ? "Create Account" : "Sign In"} subtitle={status}>
             <View style={styles.loginPanel}>
               <View style={styles.roleRow}>
                 <AppButton label="Officer" onPress={() => setLoginRole("OFFICER")} variant={loginRole === "OFFICER" ? "primary" : "ghost"} />
                 <AppButton label="Supervisor" onPress={() => setLoginRole("SUPERVISOR")} variant={loginRole === "SUPERVISOR" ? "primary" : "ghost"} />
                 <AppButton label="Admin" onPress={() => setLoginRole("ADMIN")} variant={loginRole === "ADMIN" ? "primary" : "ghost"} />
               </View>
+              {authMode === "signUp" ? (
+                <>
+                  <TextInput
+                    value={signupName}
+                    onChangeText={setSignupName}
+                    autoCapitalize="words"
+                    placeholder="Full name"
+                    placeholderTextColor={theme.colors.muted}
+                    style={styles.input}
+                  />
+                  <TextInput
+                    value={signupBadge}
+                    onChangeText={setSignupBadge}
+                    autoCapitalize="characters"
+                    placeholder="Badge or ID number (optional)"
+                    placeholderTextColor={theme.colors.muted}
+                    style={styles.input}
+                  />
+                </>
+              ) : null}
               <TextInput
                 value={loginEmail}
                 onChangeText={setLoginEmail}
@@ -606,13 +681,25 @@ export default function App() {
                 <Switch value={rememberLogin} onValueChange={setRememberLogin} />
               </View>
               <View style={styles.actionGrid}>
+                {authMode === "signUp" ? (
+                  <AppButton label="Create Account" onPress={signUpLocalAccount} disabled={loginBusy} />
+                ) : (
+                  <>
+                    <AppButton
+                      label={loginRole === "ADMIN" ? "Login as Admin" : loginRole === "SUPERVISOR" ? "Login as Supervisor" : "Login as Officer"}
+                      onPress={loginRole === "ADMIN" ? signInAsAdmin : loginRole === "SUPERVISOR" ? signInAsSupervisor : signInAsOfficer}
+                      disabled={loginBusy}
+                    />
+                    <AppButton label={biometricsReady ? "Use Biometrics" : "Use Saved Login"} onPress={signInWithSavedLogin} disabled={loginBusy || !savedLogin} variant="secondary" />
+                    <AppButton label="Agency Login" onPress={signInWithKeycloak} disabled={loginBusy} variant="ghost" />
+                  </>
+                )}
                 <AppButton
-                  label={loginRole === "ADMIN" ? "Login as Admin" : loginRole === "SUPERVISOR" ? "Login as Supervisor" : "Login as Officer"}
-                  onPress={loginRole === "ADMIN" ? signInAsAdmin : loginRole === "SUPERVISOR" ? signInAsSupervisor : signInAsOfficer}
+                  label={authMode === "signUp" ? "Back to Sign In" : "Sign Up"}
+                  onPress={() => setAuthMode(authMode === "signUp" ? "signIn" : "signUp")}
                   disabled={loginBusy}
+                  variant="secondary"
                 />
-                <AppButton label={biometricsReady ? "Use Biometrics" : "Use Saved Login"} onPress={signInWithSavedLogin} disabled={loginBusy || !savedLogin} variant="secondary" />
-                <AppButton label="Agency Login" onPress={signInWithKeycloak} disabled={loginBusy} variant="ghost" />
               </View>
             </View>
           </SectionCard>
