@@ -1,6 +1,10 @@
 import type { DraftNarrativeRequest, JobRecord, KnownSpeakerHint, NotificationRecord } from "./shared-types";
+import Constants from "expo-constants";
 
-const API_BASE_URL = "http://localhost:4000/api";
+const configuredApiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl;
+const API_BASE_URL = typeof configuredApiBaseUrl === "string" && configuredApiBaseUrl.length > 0
+  ? configuredApiBaseUrl
+  : "http://localhost:4000/api";
 let sessionToken: string | null = null;
 
 export type AuthUser = {

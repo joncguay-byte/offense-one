@@ -101,7 +101,8 @@ export async function diarizeAudioFromEvidence(filePath: string, knownSpeakers: 
   const transcription = await client.audio.transcriptions.create({
     file: createReadStream(localPath),
     model: "gpt-4o-transcribe-diarize",
-    response_format: "diarized_json"
+    response_format: "diarized_json",
+    chunking_strategy: "auto"
   } as never);
 
   const payload = transcription as unknown as Record<string, unknown>;
@@ -142,10 +143,7 @@ export async function diarizeAudioFromEvidenceWithReferences(
   const knownSpeakerReferences = await Promise.all(
     referenceClips.map(async (clip) => {
       const buffer = await readEvidenceBuffer(clip.filePath);
-      return {
-        speaker: clip.displayName,
-        audio: `data:${audioMimeTypeForPath(clip.filePath)};base64,${buffer.toString("base64")}`
-      };
+      return `data:${audioMimeTypeForPath(clip.filePath)};base64,${buffer.toString("base64")}`;
     })
   );
 
@@ -153,7 +151,11 @@ export async function diarizeAudioFromEvidenceWithReferences(
     file: createReadStream(localPath),
     model: "gpt-4o-transcribe-diarize",
     response_format: "diarized_json",
-    known_speaker_references: knownSpeakerReferences
+    chunking_strategy: "auto",
+    extra_body: {
+      known_speaker_names: referenceClips.map((clip) => clip.displayName),
+      known_speaker_references: knownSpeakerReferences
+    }
   } as never);
 
   const payload = transcription as unknown as Record<string, unknown>;
