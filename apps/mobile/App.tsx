@@ -697,6 +697,27 @@ export default function App() {
               )}
 
             <View style={styles.eventDivider} />
+            <Text style={styles.eventSectionTitle}>Photo and Video Evidence</Text>
+            {localEvidence.filter((record) => record.type === "IMAGE" || record.type === "VIDEO").length === 0 ? (
+              <EmptyState title="No photos or videos yet" body="Capture live media or choose items from your gallery below." />
+            ) : (
+              localEvidence
+                .filter((record) => record.type === "IMAGE" || record.type === "VIDEO")
+                .map((record) => (
+                  <View key={record.id} style={[styles.evidenceCard, record.selectedForDraft ? styles.evidenceCardSelected : null]}>
+                    <View style={styles.checkboxRow}>
+                      <Switch value={!!record.selectedForDraft} onValueChange={() => void toggleEvidenceForDraft(record)} />
+                      <View style={styles.evidenceCopy}>
+                        <Text style={styles.evidenceTitle}>{record.type === "VIDEO" ? "Use this video" : "Use this photo"}</Text>
+                        <Text style={styles.evidenceMeta}>{formatDateTime(record.createdAt)}</Text>
+                        <Text style={styles.evidenceMeta}>{record.fileName}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))
+            )}
+
+            <View style={styles.eventDivider} />
             <Text style={styles.eventSectionTitle}>Generate Draft</Text>
             <TextInput
               value={draftNotes}
@@ -712,7 +733,7 @@ export default function App() {
             {selectedIncident?.generatedReports[0] ? <Text style={styles.draftPreview}>{selectedIncident.generatedReports[0].body}</Text> : null}
 
             <View style={styles.eventDivider} />
-            <Text style={styles.eventSectionTitle}>Photos</Text>
+            <Text style={styles.eventSectionTitle}>Live Capture and Gallery</Text>
             <CameraCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshLocalEvidence} compact />
           </SectionCard>
         ) : null}

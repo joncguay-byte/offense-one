@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import * as ImagePicker from "expo-image-picker";
 import { StyleSheet, Text, View } from "react-native";
 import { attachCallForServiceImage, attachSceneImage } from "../../src/features/reporting";
-import { saveLocalImageEvidence } from "../../src/lib/local-evidence";
+import { saveLocalImageEvidence, saveLocalVideoEvidence } from "../../src/lib/local-evidence";
 import type { AuthUser } from "../../src/lib/api";
 import { AppButton, HeroCard, MetricCard, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { theme } from "../../src/ui/theme";
@@ -18,7 +19,9 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
   const cameraRef = useRef<CameraView | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [photoUri, setPhotoUri] = useState("");
+  const [videoUri, setVideoUri] = useState("");
   const [captureKind, setCaptureKind] = useState<"SCENE" | "CALL_FOR_SERVICE">("SCENE");
+  const [recordingVideo, setRecordingVideo] = useState(false);
   const [status, setStatus] = useState("Ready to capture scene imagery.");
   const [busy, setBusy] = useState(false);
 
@@ -69,6 +72,85 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
     }
   }
 
+  async function startVideoRecording() {
+    if (!cameraRef.current) {
+      return;
+    }
+
+    if (!selectedIncidentId) {
+      setStatus("Select an incident before recording video.");
+      return;
+    }
+
+    setBusy(true);
+    setRecordingVideo(true);
+    setStatus("Recording video...");
+    try {
+      const result = await cameraRef.current.recordAsync({ maxDuration: 120 });
+      if (!result?.uri) {
+        setStatus("Video recording stopped, but no file was returned.");
+        return;
+      }
+
+      setVideoUri(result.uri);
+      if (selectedIncidentId.startsWith("local-")) {
+        const saved = await saveLocalVideoEvidence(selectedIncidentId, result.uri, "Scene Video", currentUser?.fullName);
+        await onUploaded();
+        setStatus(`Scene video saved to this incident as ${saved.fileName}.`);
+      } else {
+        setStatus("Video captured locally. Backend video upload is not connected yet.");
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to record video.");
+    } finally {
+      setRecordingVideo(false);
+      setBusy(false);
+    }
+  }
+
+  function stopVideoRecording() {
+    cameraRef.current?.stopRecording();
+    setStatus("Stopping video...");
+  }
+
+  async function pickFromGallery() {
+    if (!selectedIncidentId) {
+      setStatus("Select an incident before choosing gallery media.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images", "videos"],
+        allowsMultipleSelection: true,
+        quality: 0.8
+      });
+
+      if (result.canceled) {
+        setStatus("Gallery selection canceled.");
+        return;
+      }
+
+      let savedCount = 0;
+      for (const asset of result.assets) {
+        if (asset.type === "video") {
+          await saveLocalVideoEvidence(selectedIncidentId, asset.uri, "Gallery Video", currentUser?.fullName);
+          savedCount += 1;
+        } else {
+          await saveLocalImageEvidence(selectedIncidentId, asset.uri, "Gallery Photo", currentUser?.fullName);
+          savedCount += 1;
+        }
+      }
+      await onUploaded();
+      setStatus(`${savedCount} gallery item(s) saved to this incident.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to choose gallery media.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!permission) {
     return <View style={styles.emptyShell} />;
   }
@@ -101,6 +183,7 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
       <View style={styles.tagRow}>
         <Tag label={selectedIncidentId || "No incident selected"} active={!!selectedIncidentId} />
         <Tag label={photoUri ? "Photo captured" : "Awaiting capture"} tone={photoUri ? "success" : "warning"} />
+        <Tag label={videoUri ? "Video captured" : "No video"} tone={videoUri ? "success" : "default"} />
         <Tag label={captureKind === "CALL_FOR_SERVICE" ? "Call for service" : "Scene photo"} active />
       </View>
       <View style={styles.row}>
@@ -112,6 +195,8 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
       </View>
       <View style={styles.row}>
         <AppButton label="Capture Photo" onPress={capturePhoto} disabled={busy} />
+        <AppButton label={recordingVideo ? "Stop Video" : "Record Video"} onPress={recordingVideo ? stopVideoRecording : () => void startVideoRecording()} disabled={busy && !recordingVideo} variant={recordingVideo ? "danger" : "secondary"} />
+        <AppButton label="Choose From Gallery" onPress={() => void pickFromGallery()} disabled={busy} variant="secondary" />
         <AppButton
           label={selectedIncidentId?.startsWith("local-") ? "Save Photo to Event" : captureKind === "CALL_FOR_SERVICE" ? "Upload Call Photo" : "Upload Scene Photo"}
           onPress={uploadPhoto}

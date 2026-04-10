@@ -3,7 +3,7 @@ import { Directory, File, Paths } from "expo-file-system";
 export type LocalEvidenceRecord = {
   id: string;
   incidentId: string;
-  type: "AUDIO" | "IMAGE";
+  type: "AUDIO" | "IMAGE" | "VIDEO";
   sourceUri: string;
   savedUri: string;
   fileName: string;
@@ -89,6 +89,34 @@ export async function saveLocalImageEvidence(incidentId: string, sourceUri: stri
     id: `local-image-${Date.now()}`,
     incidentId,
     type: "IMAGE",
+    sourceUri,
+    savedUri: destination.uri,
+    fileName,
+    createdAt: new Date().toISOString(),
+    createdBy,
+    label
+  };
+  const records = await loadManifest();
+  await saveManifest([record, ...records]);
+  return record;
+}
+
+export async function saveLocalVideoEvidence(incidentId: string, sourceUri: string, label: string, createdBy?: string | null) {
+  ensureEvidenceDirectory();
+  const sourceFile = new File(sourceUri);
+  const extension = sourceFile.extension || ".mp4";
+  const fileName = `${incidentId}-${label.toLowerCase().replace(/\s+/g, "-")}-${timestampForFileName()}${extension}`;
+  const destination = new File(evidenceDirectory, fileName);
+
+  if (destination.exists) {
+    destination.delete();
+  }
+  sourceFile.copy(destination);
+
+  const record: LocalEvidenceRecord = {
+    id: `local-video-${Date.now()}`,
+    incidentId,
+    type: "VIDEO",
     sourceUri,
     savedUri: destination.uri,
     fileName,
