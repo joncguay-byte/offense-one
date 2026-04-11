@@ -94,6 +94,7 @@ export default function App() {
     () => incidents.find((incident) => incident.id === selectedIncidentId) || null,
     [incidents, selectedIncidentId]
   );
+  const isLiveSession = !!currentUser && !standaloneMode && !currentUser.id.startsWith("local-");
 
   async function refreshIncidents() {
     if (!currentUser || standaloneMode) {
@@ -102,8 +103,10 @@ export default function App() {
 
     const nextIncidents = await loadIncidents();
     setIncidents(nextIncidents);
-    if (!selectedIncidentId && nextIncidents[0]) {
+    if ((!selectedIncidentId || selectedIncidentId.startsWith("local-")) && nextIncidents[0]) {
       setSelectedIncidentId(nextIncidents[0].id);
+    } else if (selectedIncidentId?.startsWith("local-") && nextIncidents.length === 0) {
+      setSelectedIncidentId(null);
     }
   }
 
@@ -412,6 +415,7 @@ export default function App() {
   async function completeSignIn(user: AuthUser, modeLabel: string) {
     setStandaloneMode(false);
     setCurrentUser(user);
+    setArchivedIncidentIds([]);
     setIncidents([]);
     setSelectedIncidentId(null);
     setJobs([]);
@@ -688,6 +692,13 @@ export default function App() {
 
     return () => clearInterval(handle);
   }, [currentUser, selectedIncidentId]);
+
+  useEffect(() => {
+    if (isLiveSession && selectedIncidentId?.startsWith("local-")) {
+      setSelectedIncidentId(null);
+      setStatus("Live backend session restored. Create or open an event to continue.");
+    }
+  }, [isLiveSession, selectedIncidentId]);
 
   useEffect(() => {
     if (!selectedIncident) {
