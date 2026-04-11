@@ -412,6 +412,10 @@ export default function App() {
   async function completeSignIn(user: AuthUser, modeLabel: string) {
     setStandaloneMode(false);
     setCurrentUser(user);
+    setIncidents([]);
+    setSelectedIncidentId(null);
+    setJobs([]);
+    setNotifications([]);
     setScreen("recording");
     const expoToken = await registerForExpoPushToken();
     if (expoToken) {
@@ -476,17 +480,19 @@ export default function App() {
           ? await signInWithPassword(loginEmail.trim(), loginPassword)
           : role === "OFFICER"
             ? await signInOfficer()
-            : await signInSupervisor();
+            : role === "SUPERVISOR"
+              ? await signInSupervisor()
+              : await signInWithPassword(loginEmail.trim(), loginPassword);
       await persistLoginIfNeeded(role);
       await completeSignIn(session.user, "Signed in");
-    } catch {
-      if (!(await isLocalCredential(loginEmail, loginPassword, role))) {
-        setStatus("Login failed. Check the saved username/password for this role, or connect agency login.");
+    } catch (error) {
+      if (role === "ADMIN" && (await isLocalCredential(loginEmail, loginPassword, role))) {
+        await persistLoginIfNeeded(role);
+        await ensureLocalIncident(role);
         return;
       }
 
-      await persistLoginIfNeeded(role);
-      await ensureLocalIncident(role);
+      setStatus(error instanceof Error ? error.message : "Login failed. Check the username/password or backend connection.");
     } finally {
       setLoginBusy(false);
     }
@@ -516,21 +522,8 @@ export default function App() {
       setAuthMode("signIn");
       await completeSignIn(session.user, "Account created and signed in");
       setStatus(`Account created for ${fullName}. You will stay signed in until you log out or the app updates.`);
-    } catch {
-      const profile: LocalAccountProfile = {
-        email,
-        password,
-        role: loginRole,
-        fullName,
-        badgeNumber: signupBadge.trim() || null
-      };
-      await saveLocalAccountProfile(profile);
-      const nextLogin = { email, password, role: loginRole, sessionVersion: appSessionVersion };
-      await saveLoginPreference(nextLogin);
-      setSavedLogin(nextLogin);
-      setRememberLogin(true);
-      await ensureLocalIncident(loginRole);
-      setStatus(`Account created locally for ${fullName}. Backend signup was unavailable, so AI drafting will stay in local-only mode until the API is reachable.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Backend signup failed. Check API access and try again.");
     } finally {
       setLoginBusy(false);
     }
@@ -570,11 +563,18 @@ export default function App() {
           return;
         }
       }
-      if (!(await isLocalCredential(savedLogin.email, savedLogin.password, savedLogin.role))) {
-        setStatus("Saved login no longer matches this device account. Enter the updated password.");
+      if (savedLogin.role === "ADMIN") {
+        if (!(await isLocalCredential(savedLogin.email, savedLogin.password, savedLogin.role))) {
+          setStatus("Saved login no longer matches this device account. Enter the updated password.");
+          return;
+        }
+        await ensureLocalIncident(savedLogin.role);
         return;
       }
-      await ensureLocalIncident(savedLogin.role);
+      const session = await signInWithPassword(savedLogin.email, savedLogin.password);
+      await completeSignIn(session.user, "Signed in");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Saved login failed. Sign in again.");
     } finally {
       setLoginBusy(false);
     }
@@ -648,13 +648,23 @@ export default function App() {
           setStatus("The app was updated. Please sign in again to continue.");
           return;
         }
-        if (await isLocalCredential(login.email, login.password, login.role)) {
+        if (login.role === "ADMIN" && (await isLocalCredential(login.email, login.password, login.role))) {
           setLoginBusy(true);
           try {
             await ensureLocalIncident(login.role);
           } finally {
             setLoginBusy(false);
           }
+          return;
+        }
+        setLoginBusy(true);
+        try {
+          const session = await signInWithPassword(login.email, login.password);
+          await completeSignIn(session.user, "Signed in");
+        } catch {
+          setStatus("Saved login could not reach the backend. Sign in again.");
+        } finally {
+          setLoginBusy(false);
         }
       })
       .catch(() => undefined);
