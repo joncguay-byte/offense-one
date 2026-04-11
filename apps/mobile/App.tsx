@@ -11,6 +11,7 @@ import JobsScreen from "./app/jobs/index";
 import NotificationsScreen from "./app/notifications/index";
 import SettingsScreen from "./app/settings/index";
 import {
+  createIncidentWorkflow,
   loadIncidents,
   loadJobs,
   loadNotifications,
@@ -57,6 +58,8 @@ const screenOptions: Array<{ key: ScreenKey; title: string }> = [
   { key: "supervisor", title: "Supervisor" },
   { key: "settings", title: "Settings" }
 ];
+
+const RECORDING_INBOX_ID = "recording-inbox";
 
 export default function App() {
   const appSessionVersion = Updates.updateId || Updates.runtimeVersion || Constants.expoConfig?.version || "development";
@@ -168,25 +171,43 @@ export default function App() {
     setStatus("Event created. Add photos and choose recordings for the draft.");
   }
 
-  function createEventFromForm() {
+  async function createEventFromForm() {
     if (!caseNumber.trim() || !eventTitle.trim()) {
       setStatus("Case number and event title are required.");
       return;
     }
 
-    createLocalIncident({
-      caseNumber: caseNumber.trim(),
-      title: eventTitle.trim(),
-      location: eventLocation.trim() || undefined
-    });
-    setCaseNumber("");
-    setEventTitle("");
-    setEventLocation("");
+    try {
+      if (!standaloneMode && currentUser) {
+        const incident = await createIncidentWorkflow({
+          caseNumber: caseNumber.trim(),
+          title: eventTitle.trim(),
+          location: eventLocation.trim() || undefined,
+          occurredAt: new Date().toISOString(),
+          createdById: currentUser.id
+        });
+        setIncidents((current) => [incident, ...current]);
+        setSelectedIncidentId(incident.id);
+        setScreen("event");
+        setStatus("Event created. Add photos and choose recordings for the draft.");
+      } else {
+        createLocalIncident({
+          caseNumber: caseNumber.trim(),
+          title: eventTitle.trim(),
+          location: eventLocation.trim() || undefined
+        });
+      }
+      setCaseNumber("");
+      setEventTitle("");
+      setEventLocation("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to create event.");
+    }
   }
 
-  function saveSelectedEventDetails() {
+  async function saveSelectedEventDetails() {
     if (!selectedIncident) {
-      createEventFromForm();
+      await createEventFromForm();
       return;
     }
 
@@ -669,22 +690,13 @@ export default function App() {
   }, [selectedIncidentId]);
 
   useEffect(() => {
-    if (!selectedIncidentId) {
-      setLocalEvidence([]);
-      return;
-    }
-
-    loadLocalEvidence(selectedIncidentId)
+    loadLocalEvidence()
       .then(setLocalEvidence)
       .catch(() => setLocalEvidence([]));
   }, [selectedIncidentId, status]);
 
   async function refreshLocalEvidence() {
-    if (!selectedIncidentId) {
-      return;
-    }
-
-    setLocalEvidence(await loadLocalEvidence(selectedIncidentId));
+    setLocalEvidence(await loadLocalEvidence());
   }
 
   async function toggleEvidenceForDraft(record: LocalEvidenceRecord) {
@@ -707,6 +719,9 @@ export default function App() {
   const unreadCount = notifications.filter((item) => !item.readAt).length;
   const audioRecordings = localEvidence.filter((record) => record.type === "AUDIO");
   const selectedRecordings = localEvidence.filter((record) => record.type === "AUDIO" && record.selectedForDraft);
+  const sceneEvidence = localEvidence.filter(
+    (record) => (record.type === "IMAGE" || record.type === "VIDEO") && (!selectedIncidentId || record.incidentId === selectedIncidentId)
+  );
 
   if (!currentUser) {
     return (
@@ -832,8 +847,8 @@ export default function App() {
             <TextInput value={eventTitle} onChangeText={setEventTitle} placeholder="Event label" placeholderTextColor={theme.colors.muted} style={styles.input} />
             <TextInput value={eventLocation} onChangeText={setEventLocation} placeholder="Location" placeholderTextColor={theme.colors.muted} style={styles.input} />
             <View style={styles.actionGrid}>
-              <AppButton label={selectedIncident ? "Save Event Details" : "Create Incident"} onPress={saveSelectedEventDetails} />
-              <AppButton label="Create New Event" onPress={createEventFromForm} variant="secondary" />
+              <AppButton label={selectedIncident ? "Save Event Details" : "Create Incident"} onPress={() => void saveSelectedEventDetails()} />
+              <AppButton label="Create New Event" onPress={() => void createEventFromForm()} variant="secondary" />
               <AppButton label={selectedIncident && archivedIncidentIds.includes(selectedIncident.id) ? "Restore Incident" : "Archive Incident"} onPress={selectedIncident && archivedIncidentIds.includes(selectedIncident.id) ? restoreSelectedIncident : archiveSelectedIncident} disabled={!selectedIncident} variant="ghost" />
               <AppButton label="Delete Incident" onPress={() => void deleteSelectedIncident()} disabled={!selectedIncident} variant="danger" />
               {incidents.map((incident) => (
@@ -868,11 +883,10 @@ export default function App() {
 
             <View style={styles.eventDivider} />
             <Text style={styles.eventSectionTitle}>Photo and Video Evidence</Text>
-            {localEvidence.filter((record) => record.type === "IMAGE" || record.type === "VIDEO").length === 0 ? (
+            {sceneEvidence.length === 0 ? (
               <EmptyState title="No photos or videos yet" body="Capture live media or choose items from your gallery below." />
             ) : (
-              localEvidence
-                .filter((record) => record.type === "IMAGE" || record.type === "VIDEO")
+              sceneEvidence
                 .map((record) => (
                   <View key={record.id} style={[styles.evidenceCard, record.selectedForDraft ? styles.evidenceCardSelected : null]}>
                     <View style={styles.checkboxRow}>

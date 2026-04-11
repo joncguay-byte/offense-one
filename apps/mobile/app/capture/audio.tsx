@@ -16,6 +16,7 @@ type Props = {
   onEvidenceSaved?: () => Promise<void> | void;
 };
 
+
 function sleep(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -46,6 +47,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
   const [status, setStatus] = useState("Ready to record.");
   const [localRecordings, setLocalRecordings] = useState<LocalEvidenceRecord[]>([]);
   const [busy, setBusy] = useState(false);
+  const activeRecordingIncidentId = selectedIncidentId || RECORDING_INBOX_ID;
 
   const selectedInput = useMemo(
     () => availableInputs.find((input) => input.uid === selectedInputUid) || null,
@@ -171,12 +173,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
   }, [currentUser]);
 
   useEffect(() => {
-    if (!selectedIncidentId) {
-      setLocalRecordings([]);
-      return;
-    }
-
-    loadLocalEvidence(selectedIncidentId)
+    loadLocalEvidence()
       .then((records) => setLocalRecordings(records.filter((record) => record.type === "AUDIO")))
       .catch(() => undefined);
   }, [selectedIncidentId, status]);
@@ -227,10 +224,10 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
       await recorder.stop();
       const uri = recorder.uri || recorderState.url || "";
       setRecordingUri(uri);
-      if (uri && selectedIncidentId) {
-        const saved = await saveLocalAudioEvidence(selectedIncidentId, uri, currentUser?.fullName);
+      if (uri) {
+        const saved = await saveLocalAudioEvidence(activeRecordingIncidentId, uri, currentUser?.fullName);
         await onEvidenceSaved?.();
-        const records = await loadLocalEvidence(selectedIncidentId);
+        const records = await loadLocalEvidence();
         setLocalRecordings(records.filter((record) => record.type === "AUDIO"));
         setRecordingUri(saved.savedUri);
         setStatus(`Recording saved: ${saved.fileName}`);
@@ -251,10 +248,8 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
     try {
       await deleteLocalEvidence(recordId);
       await onEvidenceSaved?.();
-      if (selectedIncidentId) {
-        const records = await loadLocalEvidence(selectedIncidentId);
-        setLocalRecordings(records.filter((record) => record.type === "AUDIO"));
-      }
+      const records = await loadLocalEvidence();
+      setLocalRecordings(records.filter((record) => record.type === "AUDIO"));
       setStatus("Recording deleted.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to delete recording.");
@@ -283,11 +278,11 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
 
     setBusy(true);
     try {
-      if (selectedIncidentId.startsWith("local-")) {
+      if (selectedIncidentId?.startsWith("local-")) {
         const saved = await saveLocalAudioEvidence(selectedIncidentId, recordingUri, currentUser?.fullName);
         await onUploaded();
         await onEvidenceSaved?.();
-        const records = await loadLocalEvidence(selectedIncidentId);
+        const records = await loadLocalEvidence();
         setLocalRecordings(records.filter((record) => record.type === "AUDIO"));
         setStatus(`Audio saved to this device incident as ${saved.fileName}. It is stored inside the app's Offense One evidence folder.`);
         return;
@@ -459,3 +454,4 @@ const styles = StyleSheet.create({
     color: theme.colors.ink
   }
 });
+const RECORDING_INBOX_ID = "recording-inbox";
