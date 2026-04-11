@@ -567,16 +567,17 @@ export default function App() {
           return;
         }
       }
-      if (savedLogin.role === "ADMIN") {
-        if (!(await isLocalCredential(savedLogin.email, savedLogin.password, savedLogin.role))) {
-          setStatus("Saved login no longer matches this device account. Enter the updated password.");
+      try {
+        const session = await signInWithPassword(savedLogin.email, savedLogin.password);
+        await completeSignIn(session.user, "Signed in");
+        return;
+      } catch {
+        if (savedLogin.role === "ADMIN" && (await isLocalCredential(savedLogin.email, savedLogin.password, savedLogin.role))) {
+          await ensureLocalIncident(savedLogin.role);
           return;
         }
-        await ensureLocalIncident(savedLogin.role);
-        return;
+        throw new Error("Saved login failed. Sign in again.");
       }
-      const session = await signInWithPassword(savedLogin.email, savedLogin.password);
-      await completeSignIn(session.user, "Signed in");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Saved login failed. Sign in again.");
     } finally {
@@ -652,21 +653,21 @@ export default function App() {
           setStatus("The app was updated. Please sign in again to continue.");
           return;
         }
-        if (login.role === "ADMIN" && (await isLocalCredential(login.email, login.password, login.role))) {
-          setLoginBusy(true);
-          try {
-            await ensureLocalIncident(login.role);
-          } finally {
-            setLoginBusy(false);
-          }
-          return;
-        }
         setLoginBusy(true);
         try {
-          const session = await signInWithPassword(login.email, login.password);
-          await completeSignIn(session.user, "Signed in");
+          try {
+            const session = await signInWithPassword(login.email, login.password);
+            await completeSignIn(session.user, "Signed in");
+          } catch {
+            if (login.role === "ADMIN" && (await isLocalCredential(login.email, login.password, login.role))) {
+              await ensureLocalIncident(login.role);
+              return;
+            }
+            setStatus("Saved login could not reach the backend. Sign in again.");
+            await clearLoginPreference();
+            setSavedLogin(null);
+          }
         } catch {
-          setStatus("Saved login could not reach the backend. Sign in again.");
         } finally {
           setLoginBusy(false);
         }
