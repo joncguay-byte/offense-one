@@ -34,6 +34,8 @@ Trial defaults:
 - `STORAGE_BACKEND=local`
 - `DATABASE_URL=file:./prisma/dev.db`
 
+If Railway does not inject `DATABASE_URL` correctly, the API now falls back to `file:./prisma/dev.db` during startup for this hosted trial profile.
+
 That is enough to prove the workflow, but it is not the final architecture. Railway can redeploy or restart services, so local SQLite and local uploads are trial-only storage.
 
 ## Step-by-step
