@@ -1,56 +1,45 @@
 # Offense One
 
-Production-oriented foundation for a mobile law-enforcement report assistant inspired by Draft One-style workflows.
+Offense One is a mobile-first police reporting assistant that captures field audio, scene imagery, and supporting evidence, then generates a draft narrative report for officer review.
 
-## What this repo includes
+## Repo layout
 
-- `apps/mobile`: Expo / React Native mobile client for Android and iOS
-- `apps/api`: Node/TypeScript API for incidents, evidence, transcripts, AI orchestration, and audit logs
-- `packages/shared`: shared types and prompt helpers used by both apps
-- `docs`: product and architecture notes
+- `apps/mobile`: Expo / React Native client for Android and iOS
+- `apps/api`: Fastify + Prisma backend for auth, incidents, evidence, transcription jobs, and report generation
+- `packages/shared`: shared types and prompt helpers
+- `docs`: deployment and product notes
 
-## Core capabilities planned
+## Current product direction
 
-- Multi-speaker field audio capture
-- Speaker diarization and officer-assisted renaming
-- Scene photo capture and visual scene analysis
-- Draft narrative generation with explicit source grounding
-- Review, correction, and export workflow
-- Audit logging and compliance-oriented data handling
+- Record multi-speaker field audio
+- Attach photos and other scene evidence to an event
+- Transcribe and diarize selected evidence
+- Generate a draft police narrative with AI assistance
+- Keep human review in the loop before anything is final
 
-## Important guardrail
+## Local development
 
-The system should generate draft reports only. Final approval must remain with the officer or supervisor.
-
-## Getting started
-
-1. Copy `.env.example` to `.env` in `apps/api`
+1. Copy [apps/api/.env.example](/C:/Users/ASOLAP7/Desktop/AI%20draft%20program/apps/api/.env.example) to `apps/api/.env`
 2. Install dependencies with `npm install`
-3. Use the default PostgreSQL `DATABASE_URL` from `apps/api/.env.example`, or point it at your managed Postgres instance
-4. Log in with the seeded demo accounts:
-   - Officer: `officer@example.gov` / `ChangeMe123!`
-   - Supervisor: `supervisor@example.gov` / `ChangeMe123!`
-5. Run `docker compose up -d` to start PostgreSQL and MinIO locally
-6. Run `npm --workspace @scene-report/api run prisma:push`
-7. Start the API with `npm run dev:api`
-8. Start the mobile app with `npm run dev:mobile`
+3. Start the API with `npm run dev:api`
+4. Start the mobile app with `npm run dev:mobile`
 
-## Local Infra
+Default demo logins:
 
-Run `docker compose up -d` to start the included PostgreSQL and MinIO stack for production-style local testing. The `minio-bootstrap` service creates the `offense-one-evidence` bucket automatically.
+- Officer: `officer@example.gov` / `ChangeMe123!`
+- Supervisor: `supervisor@example.gov` / `ChangeMe123!`
+- Admin: `admin@example.gov` / `ChangeMe123!`
 
-## Auth Modes
+## Hosted trial deployment
 
-- `AUTH_MODE=demo`: local password login using the seeded demo users
-- `AUTH_MODE=oidc`: bearer-token verification against an OIDC provider such as Keycloak
+If you want the app to behave like a normal app without keeping your PC and a tunnel running, use Railway or a similar host for the API.
 
-When using OIDC mode, configure `OIDC_ISSUER_URL` and `OIDC_AUDIENCE` in `apps/api/.env`. Password login is disabled in that mode.
+Start with:
 
-For mobile Keycloak sign-in, also set these values in `apps/mobile/app.json` under `expo.extra`:
-- `oidcIssuerUrl`
-- `oidcClientId`
-- `oidcAudience`
+- [docs/railway-deploy.md](/C:/Users/ASOLAP7/Desktop/AI%20draft%20program/docs/railway-deploy.md)
+- [apps/api/.env.production.example](/C:/Users/ASOLAP7/Desktop/AI%20draft%20program/apps/api/.env.production.example)
+- [railway.json](/C:/Users/ASOLAP7/Desktop/AI%20draft%20program/railway.json)
 
-## Current status
+## Guardrail
 
-This repo now includes database-backed demo authentication, incident and evidence workflows, report review endpoints, and a mobile app wired to real backend calls.
+Offense One should produce draft reports only. Final approval and final report responsibility stay with the officer or supervisor.

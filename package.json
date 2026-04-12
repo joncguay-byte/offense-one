@@ -7,6 +7,7 @@
     "packages/*"
   ],
   "scripts": {
+    "start:api": "npm --workspace @scene-report/api run start",
     "dev:mobile": "npm --workspace @scene-report/mobile run start",
     "dev:api": "npm --workspace @scene-report/api run dev",
     "build": "npm run build --workspaces",

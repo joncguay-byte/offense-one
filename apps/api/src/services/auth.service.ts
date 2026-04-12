@@ -175,6 +175,13 @@ export async function seedDemoUsers() {
       fullName: "Demo Supervisor",
       badgeNumber: "2001",
       role: "SUPERVISOR" as const
+    },
+    {
+      email: env.DEMO_ADMIN_EMAIL,
+      password: env.DEMO_ADMIN_PASSWORD,
+      fullName: "Demo Admin",
+      badgeNumber: "9001",
+      role: "ADMIN" as const
     }
   ];
 

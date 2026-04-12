@@ -38,7 +38,9 @@ const envSchema = z.object({
   DEMO_USER_EMAIL: z.string().email().default("officer@example.gov"),
   DEMO_USER_PASSWORD: z.string().min(8).default("ChangeMe123!"),
   DEMO_SUPERVISOR_EMAIL: z.string().email().default("supervisor@example.gov"),
-  DEMO_SUPERVISOR_PASSWORD: z.string().min(8).default("ChangeMe123!")
+  DEMO_SUPERVISOR_PASSWORD: z.string().min(8).default("ChangeMe123!"),
+  DEMO_ADMIN_EMAIL: z.string().email().default("admin@example.gov"),
+  DEMO_ADMIN_PASSWORD: z.string().min(8).default("ChangeMe123!")
 });
 
 export const env = envSchema.parse(process.env);

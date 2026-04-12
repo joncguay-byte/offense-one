@@ -38,6 +38,7 @@ app.addHook("preHandler", async (request, reply) => {
   if (
     request.url.startsWith("/api/health") ||
     request.url.startsWith("/api/auth/login") ||
+    request.url.startsWith("/api/auth/signup") ||
     request.url.startsWith("/docs")
   ) {
     return;
