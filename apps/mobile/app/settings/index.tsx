@@ -5,8 +5,9 @@ import * as Updates from "expo-updates";
 import { AppButton, HeroCard, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { loadRecordingCueSettings, saveRecordingCueSettings, type RecordingCueSettings, type RecordingCueVolume } from "../../src/lib/audio-settings";
 import { loadLocalAccountProfiles, type LocalAccountProfile } from "../../src/lib/auth-preferences";
+import { loadApiBaseUrlPreference, saveApiBaseUrlPreference } from "../../src/lib/api-settings";
 import { buildToneDataUri, getCueVolumeLevel } from "../../src/lib/recording-cues";
-import type { AuthUser } from "../../src/lib/api";
+import { getApiBaseUrl, setApiBaseUrl, type AuthUser } from "../../src/lib/api";
 import { loadMyVoiceProfile, removeMyVoiceProfile } from "../../src/features/reporting";
 import { theme } from "../../src/ui/theme";
 
@@ -31,6 +32,7 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
   const [accountEmail, setAccountEmail] = useState(currentUser?.email || "");
   const [accountBadge, setAccountBadge] = useState(currentUser?.badgeNumber || "");
   const [accountPassword, setAccountPassword] = useState("");
+  const [apiBaseUrl, setApiBaseUrlInput] = useState(getApiBaseUrl());
   const [status, setStatus] = useState("Loading saved preferences...");
   const [updateStatus, setUpdateStatus] = useState(Updates.isEnabled ? "Updates are enabled for installed builds." : "Updates are unavailable in Expo Go/dev mode.");
 
@@ -46,6 +48,15 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
 
     loadMyVoiceProfile()
       .then((result) => setHasVoiceProfile(Boolean(result.hasProfile)))
+      .catch(() => undefined);
+
+    loadApiBaseUrlPreference()
+      .then((value) => {
+        if (value) {
+          setApiBaseUrl(value);
+          setApiBaseUrlInput(value);
+        }
+      })
       .catch(() => undefined);
   }, []);
 
@@ -115,6 +126,31 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
       badgeNumber: accountBadge.trim() || null
     });
     setStatus("Account name, username, and password saved on this device.");
+  }
+
+  async function saveApiUrl() {
+    try {
+      const savedValue = await saveApiBaseUrlPreference(apiBaseUrl);
+      setApiBaseUrl(savedValue);
+      setApiBaseUrlInput(savedValue || getApiBaseUrl());
+      setStatus(savedValue ? "API base URL saved on this device." : "API base URL reset to the app default.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to save API base URL.");
+    }
+  }
+
+  async function testApiUrl() {
+    const target = apiBaseUrl.trim() || getApiBaseUrl();
+    setStatus(`Testing ${target} ...`);
+    try {
+      const response = await fetch(`${target}/health`);
+      if (!response.ok) {
+        throw new Error(`Health check failed with ${response.status}.`);
+      }
+      setStatus(`API connection succeeded: ${target}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to reach the API.");
+    }
   }
 
   async function checkForUpdates() {
@@ -203,6 +239,26 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
         <View style={styles.row}>
           <AppButton label="Save Account Changes" onPress={() => void saveAccount()} disabled={!currentUser} />
           <AppButton label="Sign Out" onPress={() => void onSignOut()} disabled={!currentUser} variant="ghost" />
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Backend Connection" subtitle="Point the mobile app at the current API or tunnel URL without reinstalling the app.">
+        <View style={styles.tagRow}>
+          <Tag label="Editable API URL" tone="success" active />
+        </View>
+        <TextInput
+          value={apiBaseUrl}
+          onChangeText={setApiBaseUrlInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="https://your-tunnel-url.loca.lt/api"
+          placeholderTextColor={theme.colors.muted}
+          style={styles.input}
+        />
+        <Text style={styles.preferenceValue}>Include the full `/api` suffix. Example: `https://shaggy-feet-flash.loca.lt/api`</Text>
+        <View style={styles.row}>
+          <AppButton label="Save API URL" onPress={() => void saveApiUrl()} variant="secondary" />
+          <AppButton label="Test Connection" onPress={() => void testApiUrl()} variant="ghost" />
         </View>
       </SectionCard>
 

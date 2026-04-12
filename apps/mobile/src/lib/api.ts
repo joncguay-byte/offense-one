@@ -2,9 +2,10 @@ import type { DraftNarrativeRequest, JobRecord, KnownSpeakerHint, NotificationRe
 import Constants from "expo-constants";
 
 const configuredApiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl;
-const API_BASE_URL = typeof configuredApiBaseUrl === "string" && configuredApiBaseUrl.length > 0
+const DEFAULT_API_BASE_URL = typeof configuredApiBaseUrl === "string" && configuredApiBaseUrl.length > 0
   ? configuredApiBaseUrl
   : "http://localhost:4000/api";
+let apiBaseUrl = DEFAULT_API_BASE_URL;
 let sessionToken: string | null = null;
 
 export type AuthUser = {
@@ -62,8 +63,16 @@ export function getSessionToken() {
   return sessionToken;
 }
 
+export function setApiBaseUrl(nextApiBaseUrl: string | null) {
+  apiBaseUrl = nextApiBaseUrl?.trim() || DEFAULT_API_BASE_URL;
+}
+
+export function getApiBaseUrl() {
+  return apiBaseUrl;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
     headers: {
       ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),

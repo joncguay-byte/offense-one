@@ -29,6 +29,8 @@ import {
   uploadDraftEvidence
 } from "./src/features/reporting";
 import { setSessionToken, type AuthUser, type IncidentRecord } from "./src/lib/api";
+import { loadApiBaseUrlPreference } from "./src/lib/api-settings";
+import { setApiBaseUrl } from "./src/lib/api";
 import {
   canUseBiometrics,
   clearLoginPreference,
@@ -640,8 +642,10 @@ export default function App() {
   }, [currentUser]);
 
   useEffect(() => {
-    loadLoginPreference()
-      .then(async (login) => {
+    loadApiBaseUrlPreference()
+      .then(async (apiBaseUrlPreference) => {
+        setApiBaseUrl(apiBaseUrlPreference);
+        const login = await loadLoginPreference();
         if (!login) {
           return;
         }
