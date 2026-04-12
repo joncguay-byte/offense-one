@@ -58,7 +58,7 @@
       "oidcIssuerUrl": "http://127.0.0.1:8080/realms/offense-one",
       "oidcClientId": "offense-one-mobile",
       "oidcAudience": "offense-one-api",
-      "apiBaseUrl": "https://polite-pears-shave.loca.lt/api",
+      "apiBaseUrl": "https://shaggy-feet-flash.loca.lt/api",
       "eas": {
         "projectId": "2ba49ef8-21d1-45e0-873b-13fa0aa86b4a"
       }
