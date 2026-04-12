@@ -35,6 +35,7 @@ Trial defaults:
 - `DATABASE_URL=file:./prisma/dev.db`
 
 If Railway does not inject `DATABASE_URL` correctly, the API now falls back to `file:./prisma/dev.db` during startup for this hosted trial profile.
+If Railway does not inject `JWT_SECRET` correctly, the API falls back to a trial-only internal secret during startup. You should still set your own `JWT_SECRET` in Railway for anything beyond a short test.
 
 That is enough to prove the workflow, but it is not the final architecture. Railway can redeploy or restart services, so local SQLite and local uploads are trial-only storage.
 

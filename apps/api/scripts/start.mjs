@@ -17,9 +17,11 @@ if (!prismaCliEntry) {
 }
 
 const databaseUrl = process.env.DATABASE_URL?.trim() || "file:./prisma/dev.db";
+const jwtSecret = process.env.JWT_SECRET?.trim() || "offense-one-trial-secret-change-me";
 const env = {
   ...process.env,
-  DATABASE_URL: databaseUrl
+  DATABASE_URL: databaseUrl,
+  JWT_SECRET: jwtSecret
 };
 
 function run(command, args) {
