@@ -15,7 +15,7 @@ Railway can deploy a web service from this repo using [railway.json](/C:/Users/A
 
 That file tells Railway to:
 
-- build with `npm install && npm run build`
+- build with `npm install && npm --workspace @scene-report/shared run build && npm --workspace @scene-report/api run build`
 - start with `npm run start:api`
 - health check `/api/health`
 
