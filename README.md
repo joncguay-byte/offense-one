@@ -24,6 +24,8 @@ Offense One is a mobile-first police reporting assistant that captures field aud
 3. Start the API with `npm run dev:api`
 4. Start the mobile app with `npm run dev:mobile`
 
+Node 20 or newer is recommended for both local development and hosted deployment.
+
 Default demo logins:
 
 - Officer: `officer@example.gov` / `ChangeMe123!`

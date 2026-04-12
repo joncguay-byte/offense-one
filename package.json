@@ -2,6 +2,9 @@
   "name": "offense-one",
   "private": true,
   "version": "0.1.0",
+  "engines": {
+    "node": ">=20"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -10,7 +13,7 @@
     "start:api": "npm --workspace @scene-report/api run start",
     "dev:mobile": "npm --workspace @scene-report/mobile run start",
     "dev:api": "npm --workspace @scene-report/api run dev",
-    "build": "npm run build --workspaces",
+    "build": "npm --workspace @scene-report/shared run build && npm --workspace @scene-report/api run build",
     "lint": "npm run lint --workspaces",
     "typecheck": "npm run typecheck --workspaces",
     "build:android:trial": "cd apps/mobile && eas build --platform android --profile preview",

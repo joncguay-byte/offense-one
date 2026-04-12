@@ -13,6 +13,8 @@ This is the fastest path to make Offense One work like a normal app for a trial.
 
 Railway can deploy a web service from this repo using [railway.json](/C:/Users/ASOLAP7/Desktop/AI%20draft%20program/railway.json).
 
+The hosted API expects Node 20 or newer.
+
 That file tells Railway to:
 
 - build with `npm install && npm --workspace @scene-report/shared run build && npm --workspace @scene-report/api run build`
