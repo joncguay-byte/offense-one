@@ -1,6 +1,11 @@
 import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import OpenAI from "openai";
+import ffmpegPath from "ffmpeg-static";
+import ffmpeg from "fluent-ffmpeg";
 import {
   buildNarrativePrompt,
   draftNarrativeSchema,
@@ -64,6 +69,55 @@ function audioMimeTypeForPath(filePath: string) {
     return "audio/mp4";
   }
   return "audio/mp4";
+}
+
+function looksLikeUnsupportedAudioError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes("corrupted") || message.includes("unsupported") || message.includes("invalid file format");
+}
+
+async function ensureFileHasContent(filePath: string) {
+  const details = await stat(filePath);
+  if (details.size <= 0) {
+    throw new Error("The uploaded audio file is empty.");
+  }
+  return details.size;
+}
+
+async function normalizeAudioForTranscription(localPath: string) {
+  const binaryPath = ffmpegPath;
+  if (!binaryPath) {
+    return null;
+  }
+
+  const outputPath = path.join(os.tmpdir(), `offense-one-transcription-${randomUUID()}.mp3`);
+
+  return new Promise<string>((resolve, reject) => {
+    ffmpeg(localPath)
+      .setFfmpegPath(binaryPath)
+      .noVideo()
+      .audioCodec("libmp3lame")
+      .audioChannels(1)
+      .audioFrequency(16000)
+      .format("mp3")
+      .on("end", () => resolve(outputPath))
+      .on("error", reject)
+      .save(outputPath);
+  });
+}
+
+async function createDiarizedTranscription(aiClient: OpenAI, localPath: string, extraBody?: Record<string, unknown>) {
+  return aiClient.audio.transcriptions.create({
+    file: createReadStream(localPath),
+    model: "gpt-4o-transcribe-diarize",
+    response_format: "diarized_json",
+    chunking_strategy: "auto",
+    ...(extraBody ? { extra_body: extraBody } : {})
+  } as never);
 }
 
 function buildSingleSpeakerTranscript(text: string, knownSpeakers: KnownSpeakerHint[] = []): DiarizedTranscript {
@@ -151,15 +205,22 @@ export async function diarizeAudioFromEvidence(filePath: string, knownSpeakers: 
   }
 
   const localPath = await materializeEvidenceToLocalPath(filePath);
+  await ensureFileHasContent(localPath);
   let transcription: unknown;
   try {
-    transcription = await aiClient.audio.transcriptions.create({
-      file: createReadStream(localPath),
-      model: "gpt-4o-transcribe-diarize",
-      response_format: "diarized_json",
-      chunking_strategy: "auto"
-    } as never);
+    transcription = await createDiarizedTranscription(aiClient, localPath);
   } catch (error) {
+    if (looksLikeUnsupportedAudioError(error)) {
+      const normalizedPath = await normalizeAudioForTranscription(localPath).catch(() => null);
+      if (normalizedPath) {
+        try {
+          transcription = await createDiarizedTranscription(aiClient, normalizedPath);
+        } catch {
+          return fallbackTranscribeAudio(normalizedPath, knownSpeakers);
+        }
+      }
+    }
+
     return fallbackTranscribeAudio(localPath, knownSpeakers).catch(() => {
       throw error;
     });
@@ -201,6 +262,7 @@ export async function diarizeAudioFromEvidenceWithReferences(
   }
 
   const localPath = await materializeEvidenceToLocalPath(filePath);
+  await ensureFileHasContent(localPath);
   const knownSpeakerReferences = await Promise.all(
     referenceClips.map(async (clip) => {
       const buffer = await readEvidenceBuffer(clip.filePath);
@@ -210,17 +272,22 @@ export async function diarizeAudioFromEvidenceWithReferences(
 
   let transcription: unknown;
   try {
-    transcription = await aiClient.audio.transcriptions.create({
-      file: createReadStream(localPath),
-      model: "gpt-4o-transcribe-diarize",
-      response_format: "diarized_json",
-      chunking_strategy: "auto",
-      extra_body: {
-        known_speaker_names: referenceClips.map((clip) => clip.displayName),
-        known_speaker_references: knownSpeakerReferences
-      }
-    } as never);
+    transcription = await createDiarizedTranscription(aiClient, localPath, {
+      known_speaker_names: referenceClips.map((clip) => clip.displayName),
+      known_speaker_references: knownSpeakerReferences
+    });
   } catch (error) {
+    if (looksLikeUnsupportedAudioError(error)) {
+      const normalizedPath = await normalizeAudioForTranscription(localPath).catch(() => null);
+      if (normalizedPath) {
+        try {
+          transcription = await createDiarizedTranscription(aiClient, normalizedPath);
+        } catch {
+          return fallbackTranscribeAudio(normalizedPath, knownSpeakers);
+        }
+      }
+    }
+
     return fallbackTranscribeAudio(localPath, knownSpeakers).catch(() => {
       throw error;
     });
