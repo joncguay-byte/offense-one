@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
     color: theme.colors.muted
   },
   primaryRecordPanel: {
-    backgroundColor: theme.colors.ink,
+    backgroundColor: theme.colors.panelDark,
     borderRadius: theme.radius.lg,
     padding: theme.spacing.lg,
     gap: theme.spacing.sm

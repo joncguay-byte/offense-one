@@ -41,7 +41,7 @@ export function BrandLockup({
 
 const styles = StyleSheet.create({
   mark: {
-    backgroundColor: theme.colors.ink,
+    backgroundColor: theme.colors.panelDark,
     padding: 8,
     justifyContent: "center",
     alignItems: "center",

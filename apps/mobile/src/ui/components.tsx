@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.lg
   },
   hero: {
-    backgroundColor: theme.colors.ink,
+    backgroundColor: theme.colors.panelDark,
     borderRadius: theme.radius.xl,
     padding: theme.spacing.xl,
     flexDirection: "row",

@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
   },
   cardUnread: {
     borderColor: theme.colors.accent,
-    backgroundColor: "#eef7f8"
+    backgroundColor: theme.colors.accentSoft
   },
   header: {
     flexDirection: "row",

@@ -1287,7 +1287,7 @@ const styles = StyleSheet.create({
     lineHeight: 20
   },
   primaryCaptureCard: {
-    backgroundColor: theme.colors.ink,
+    backgroundColor: theme.colors.panelDark,
     borderRadius: theme.radius.lg,
     padding: theme.spacing.lg,
     gap: theme.spacing.sm
