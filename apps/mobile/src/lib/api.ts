@@ -1,10 +1,13 @@
 import type { DraftNarrativeRequest, JobRecord, KnownSpeakerHint, NotificationRecord } from "./shared-types";
 import Constants from "expo-constants";
 
-const configuredApiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl;
+const configuredApiBaseUrl =
+  Constants.expoConfig?.extra?.apiBaseUrl ||
+  (Constants.manifest2 as { extra?: { expoClient?: { extra?: { apiBaseUrl?: string } } } } | null)?.extra?.expoClient?.extra?.apiBaseUrl;
+const FALLBACK_RAILWAY_API_BASE_URL = "https://scene-reportapi-production.up.railway.app/api";
 const DEFAULT_API_BASE_URL = typeof configuredApiBaseUrl === "string" && configuredApiBaseUrl.length > 0
   ? configuredApiBaseUrl
-  : "http://localhost:4000/api";
+  : FALLBACK_RAILWAY_API_BASE_URL;
 let apiBaseUrl = DEFAULT_API_BASE_URL;
 let sessionToken: string | null = null;
 
