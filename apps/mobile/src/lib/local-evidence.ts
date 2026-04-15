@@ -48,10 +48,18 @@ function timestampForFileName() {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
 
+function normalizeExtension(extension?: string | null, fallback = ".dat") {
+  if (!extension) {
+    return fallback;
+  }
+
+  return extension.startsWith(".") ? extension : `.${extension}`;
+}
+
 export async function saveLocalAudioEvidence(incidentId: string, sourceUri: string, createdBy?: string | null) {
   ensureEvidenceDirectory();
   const sourceFile = new File(sourceUri);
-  const extension = sourceFile.extension || ".m4a";
+  const extension = normalizeExtension(sourceFile.extension, ".m4a");
   const fileName = `${incidentId}-scene-audio-${timestampForFileName()}${extension}`;
   const destination = new File(evidenceDirectory, fileName);
 
@@ -105,7 +113,7 @@ export async function saveLocalImageEvidence(incidentId: string, sourceUri: stri
 export async function saveLocalVideoEvidence(incidentId: string, sourceUri: string, label: string, createdBy?: string | null) {
   ensureEvidenceDirectory();
   const sourceFile = new File(sourceUri);
-  const extension = sourceFile.extension || ".mp4";
+  const extension = normalizeExtension(sourceFile.extension, ".mp4");
   const fileName = `${incidentId}-${label.toLowerCase().replace(/\s+/g, "-")}-${timestampForFileName()}${extension}`;
   const destination = new File(evidenceDirectory, fileName);
 

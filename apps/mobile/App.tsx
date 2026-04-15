@@ -427,11 +427,12 @@ export default function App() {
         if (record.type === "VIDEO") {
           continue;
         }
+        const evidenceUri = record.type === "AUDIO" ? (record.sourceUri || record.savedUri) : record.savedUri;
         uploadedEvidence.push(
           await uploadDraftEvidence({
             incidentId: activeIncident.id,
             type: record.type,
-            uri: record.savedUri,
+            uri: evidenceUri,
             fileName: record.fileName,
             currentUser,
             label: record.label

@@ -239,6 +239,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, se
     setBusy(true);
     try {
       await recorder.stop();
+      await sleep(350);
       const uri = recorder.uri || recorderState.url || "";
       setRecordingUri(uri);
       if (uri) {
