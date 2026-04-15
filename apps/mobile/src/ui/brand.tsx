@@ -74,16 +74,21 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md
   },
   lockupCopy: {
-    gap: 4
+    gap: 2,
+    paddingRight: theme.spacing.sm
   },
   lockupTitle: {
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: "900",
-    color: "#f8fafc"
+    color: "#ffffff",
+    letterSpacing: 0.4,
+    textShadowColor: "rgba(8, 14, 20, 0.28)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6
   },
   lockupSubtitle: {
     fontSize: 14,
-    color: "#c3d2d9",
+    color: "#d7e3e8",
     letterSpacing: 0.3
   }
 });
