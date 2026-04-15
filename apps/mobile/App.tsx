@@ -399,27 +399,27 @@ export default function App() {
       return;
     }
 
-    const activeIncident = await ensureIncidentForDraft();
-
-    if (standaloneMode || activeIncident.id.startsWith("local-")) {
-      generateLocalReport(
-        activeIncident.id,
-        [
-          "AI narrative drafting is not available in local-only mode.",
-          "To interpret the selected conversation and scene imagery, Offense One needs the hosted API running with an OpenAI API key so audio can be transcribed/diarized and photos can be analyzed.",
-          "",
-          `Selected evidence ready for drafting: ${selectedEvidence.map((record) => record.fileName).join(", ")}`,
-          draftNotes ? `Officer notes: ${draftNotes}` : ""
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        draftNotes
-      );
-      setStatus("Selected evidence is ready, but AI interpretation requires the hosted API/OpenAI setup.");
-      return;
-    }
-
     try {
+      const activeIncident = await ensureIncidentForDraft();
+
+      if (standaloneMode || activeIncident.id.startsWith("local-")) {
+        generateLocalReport(
+          activeIncident.id,
+          [
+            "AI narrative drafting is not available in local-only mode.",
+            "To interpret the selected conversation and scene imagery, Offense One needs the hosted API running with an OpenAI API key so audio can be transcribed/diarized and photos can be analyzed.",
+            "",
+            `Selected evidence ready for drafting: ${selectedEvidence.map((record) => record.fileName).join(", ")}`,
+            draftNotes ? `Officer notes: ${draftNotes}` : ""
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          draftNotes
+        );
+        setStatus("Selected evidence is ready, but AI interpretation requires the hosted API/OpenAI setup.");
+        return;
+      }
+
       setStatus("Uploading selected evidence for AI interpretation...");
       const uploadedEvidence = [];
       for (const record of selectedEvidence) {
