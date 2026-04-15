@@ -15,6 +15,19 @@ import { materializeEvidenceToLocalPath, readEvidenceBuffer } from "./storage.se
 const client = env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: env.OPENAI_API_KEY })
   : null;
+const allowPlaceholderAi = env.NODE_ENV !== "production";
+
+function requireAiClient(feature: "audio transcription" | "scene analysis" | "narrative generation") {
+  if (client) {
+    return client;
+  }
+
+  if (allowPlaceholderAi) {
+    return null;
+  }
+
+  throw new Error(`OpenAI API key is not configured on the hosted API service, so ${feature} is unavailable.`);
+}
 
 function secondsToMs(value: number | string | undefined) {
   if (value === undefined) {
@@ -73,7 +86,8 @@ function applyKnownSpeakerHints(
 }
 
 export async function diarizeAudioFromEvidence(filePath: string, knownSpeakers: KnownSpeakerHint[] = []): Promise<DiarizedTranscript> {
-  if (!client) {
+  const aiClient = requireAiClient("audio transcription");
+  if (!aiClient) {
     return applyKnownSpeakerHints({
       language: "en",
       speakers: [
@@ -98,7 +112,7 @@ export async function diarizeAudioFromEvidence(filePath: string, knownSpeakers: 
   }
 
   const localPath = await materializeEvidenceToLocalPath(filePath);
-  const transcription = await client.audio.transcriptions.create({
+  const transcription = await aiClient.audio.transcriptions.create({
     file: createReadStream(localPath),
     model: "gpt-4o-transcribe-diarize",
     response_format: "diarized_json",
@@ -135,7 +149,8 @@ export async function diarizeAudioFromEvidenceWithReferences(
   knownSpeakers: KnownSpeakerHint[] = [],
   referenceClips: Array<{ displayName: string; filePath: string }> = []
 ): Promise<DiarizedTranscript> {
-  if (!client || referenceClips.length === 0) {
+  const aiClient = requireAiClient("audio transcription");
+  if (!aiClient || referenceClips.length === 0) {
     return diarizeAudioFromEvidence(filePath, knownSpeakers);
   }
 
@@ -147,7 +162,7 @@ export async function diarizeAudioFromEvidenceWithReferences(
     })
   );
 
-  const transcription = await client.audio.transcriptions.create({
+  const transcription = await aiClient.audio.transcriptions.create({
     file: createReadStream(localPath),
     model: "gpt-4o-transcribe-diarize",
     response_format: "diarized_json",
@@ -184,7 +199,8 @@ export async function diarizeAudioFromEvidenceWithReferences(
 }
 
 export async function analyzeSceneImages(imageInputs: Array<{ path: string; sourceKind?: "SCENE" | "CALL_FOR_SERVICE" }>): Promise<SceneImageContext[]> {
-  if (!client || imageInputs.length === 0) {
+  const aiClient = requireAiClient("scene analysis");
+  if (!aiClient || imageInputs.length === 0) {
     return imageInputs.length === 0
       ? []
       : [
@@ -206,7 +222,7 @@ export async function analyzeSceneImages(imageInputs: Array<{ path: string; sour
     const fileBuffer = await readEvidenceBuffer(imagePath);
     const base64 = fileBuffer.toString("base64");
     const mimeType = mimeTypeForPath(imagePath);
-    const response = await client.responses.create({
+    const response = await aiClient.responses.create({
       model: "gpt-4.1-mini",
       input: [
         {
@@ -253,7 +269,8 @@ export async function generateNarrativeDraft(
     sceneContext
   });
 
-  if (!client) {
+  const aiClient = requireAiClient("narrative generation");
+  if (!aiClient) {
     return {
       body: [
         "On the listed date and time, officers responded to the reported call for service.",
@@ -282,7 +299,7 @@ export async function generateNarrativeDraft(
     };
   }
 
-  const response = await client.responses.create({
+  const response = await aiClient.responses.create({
     model: "gpt-4.1",
     input: prompt,
     text: {
