@@ -91,6 +91,7 @@ export default function App() {
   const [draftNotes, setDraftNotes] = useState("");
   const [biometricsReady, setBiometricsReady] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
+  const [draftBusy, setDraftBusy] = useState(false);
   const eventPlaybackPlayer = useMemo(() => createAudioPlayer(null), []);
 
   const selectedIncident = useMemo(
@@ -389,6 +390,10 @@ export default function App() {
   }
 
   async function generateEventDraft() {
+    if (draftBusy) {
+      return;
+    }
+
     const selectedEvidence = localEvidence.filter(
       (record) =>
         record.selectedForDraft &&
@@ -400,8 +405,16 @@ export default function App() {
       return;
     }
 
+    setDraftBusy(true);
     try {
-      const activeIncident = await ensureIncidentForDraft();
+      if (!selectedIncident) {
+        await ensureIncidentForDraft();
+        await refreshLocalEvidence();
+        setStatus("Event created from the selected draft evidence. Tap Generate Draft Narrative again to continue.");
+        return;
+      }
+
+      const activeIncident = selectedIncident;
 
       if (standaloneMode || activeIncident.id.startsWith("local-")) {
         generateLocalReport(
@@ -461,6 +474,8 @@ export default function App() {
       setStatus("AI draft narrative generated from the selected audio and imagery. Review before use.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to generate draft narrative.");
+    } finally {
+      setDraftBusy(false);
     }
   }
 
@@ -1001,7 +1016,7 @@ export default function App() {
               multiline
             />
             <View style={styles.actionGrid}>
-              <AppButton label="Generate Draft Narrative" onPress={generateEventDraft} disabled={selectedRecordings.length === 0} />
+              <AppButton label={draftBusy ? "Generating..." : "Generate Draft Narrative"} onPress={generateEventDraft} disabled={selectedRecordings.length === 0 || draftBusy} />
             </View>
             <View style={styles.generateStatusCard}>
               <Text style={styles.generateStatusTitle}>Draft Selection</Text>
@@ -1028,7 +1043,11 @@ export default function App() {
 
             <View style={styles.eventDivider} />
             <Text style={styles.eventSectionTitle}>Live Capture and Gallery</Text>
-            <CameraCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshLocalEvidence} compact />
+            {draftBusy ? (
+              <Text style={styles.panelCopy}>Draft generation is in progress. Live capture will return when the current upload and narrative workflow finishes.</Text>
+            ) : (
+              <CameraCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshLocalEvidence} compact />
+            )}
           </SectionCard>
         ) : null}
 
