@@ -448,12 +448,12 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm
   },
   primaryRecordTitle: {
-    color: "#f8fafc",
+    color: theme.colors.onDark,
     fontSize: 26,
     fontWeight: "900"
   },
   primaryRecordBody: {
-    color: "#c9d6dc",
+    color: theme.colors.heroBody,
     fontSize: 15,
     lineHeight: 22
   },

@@ -1293,12 +1293,12 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm
   },
   primaryCaptureTitle: {
-    color: "#f8fafc",
+    color: theme.colors.onDark,
     fontSize: 22,
     fontWeight: "900"
   },
   primaryCaptureBody: {
-    color: "#c9d6dc",
+    color: theme.colors.heroBody,
     fontSize: 15,
     lineHeight: 22
   },
