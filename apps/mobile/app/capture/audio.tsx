@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { attachAudioEvidence, attachOfficerVoiceReference, loadMyVoiceProfile, saveMyVoiceProfile } from "../../src/features/reporting";
 import { loadRecordingCueSettings, saveRecordingCueSettings, type RecordingCueVolume } from "../../src/lib/audio-settings";
 import { deleteLocalEvidence, loadLocalEvidence, saveLocalAudioEvidence, type LocalEvidenceRecord } from "../../src/lib/local-evidence";
-import { buildToneDataUri, getCueVolumeLevel } from "../../src/lib/recording-cues";
+import { ensureCueFile, getCueVolumeLevel } from "../../src/lib/recording-cues";
 import type { AuthUser } from "../../src/lib/api";
 import { AppButton, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { theme } from "../../src/ui/theme";
@@ -33,8 +33,8 @@ function describeInput(input: RecordingInput) {
 export default function AudioCaptureScreen({ currentUser, selectedIncidentId, onUploaded, onEvidenceSaved }: Props) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
-  const startTonePlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(1760, 220) }), []);
-  const stopTonePlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(988, 240) }), []);
+  const startTonePlayer = useMemo(() => createAudioPlayer(null), []);
+  const stopTonePlayer = useMemo(() => createAudioPlayer(null), []);
   const playbackPlayer = useMemo(() => createAudioPlayer(null), []);
   const [recordingUri, setRecordingUri] = useState("");
   const [referenceReady, setReferenceReady] = useState(false);
@@ -47,6 +47,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
   const [status, setStatus] = useState("Ready to record.");
   const [localRecordings, setLocalRecordings] = useState<LocalEvidenceRecord[]>([]);
   const [busy, setBusy] = useState(false);
+  const [cueReady, setCueReady] = useState(false);
   const activeRecordingIncidentId = selectedIncidentId || RECORDING_INBOX_ID;
 
   const selectedInput = useMemo(
@@ -61,6 +62,11 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
 
     const player = type === "start" ? startTonePlayer : stopTonePlayer;
     try {
+      if (!cueReady) {
+        const cueUri = await ensureCueFile(type);
+        player.replace({ uri: cueUri });
+        setCueReady(true);
+      }
       player.volume = getCueVolumeLevel(cueVolume);
       player.pause();
       await player.seekTo(0);
@@ -132,6 +138,16 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
   }
 
   useEffect(() => {
+    Promise.all([ensureCueFile("start"), ensureCueFile("stop")])
+      .then(([startUri, stopUri]) => {
+        startTonePlayer.replace({ uri: startUri });
+        stopTonePlayer.replace({ uri: stopUri });
+        setCueReady(true);
+      })
+      .catch(() => {
+        setCueReady(false);
+      });
+
     AudioModule.requestRecordingPermissionsAsync()
       .then((permission) => {
         if (!permission.granted) {

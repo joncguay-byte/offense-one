@@ -1,3 +1,4 @@
+import { Directory, File, Paths } from "expo-file-system";
 import type { RecordingCueVolume } from "./audio-settings";
 
 function encodeBase64(bytes: Uint8Array) {
@@ -20,6 +21,10 @@ function encodeBase64(bytes: Uint8Array) {
 }
 
 export function buildToneDataUri(frequency: number, durationMs: number) {
+  return `data:audio/wav;base64,${encodeBase64(buildToneBytes(frequency, durationMs))}`;
+}
+
+function buildToneBytes(frequency: number, durationMs: number) {
   const sampleRate = 8000;
   const sampleCount = Math.max(1, Math.floor((sampleRate * durationMs) / 1000));
   const dataSize = sampleCount * 2;
@@ -51,7 +56,29 @@ export function buildToneDataUri(frequency: number, durationMs: number) {
     view.setInt16(44 + index * 2, Math.round(sample * 32767), true);
   }
 
-  return `data:audio/wav;base64,${encodeBase64(new Uint8Array(buffer))}`;
+  return new Uint8Array(buffer);
+}
+
+function cueDirectory() {
+  const directory = new Directory(Paths.cache, "offense-one-cues");
+  if (!directory.exists) {
+    directory.create({ idempotent: true, intermediates: true });
+  }
+  return directory;
+}
+
+export async function ensureCueFile(name: "start" | "stop") {
+  const cueFile = new File(cueDirectory(), name === "start" ? "recording-start.wav" : "recording-stop.wav");
+  if (!cueFile.exists) {
+    const bytes =
+      name === "start"
+        ? buildToneBytes(1760, 180)
+        : buildToneBytes(740, 260);
+    cueFile.create({ overwrite: true, intermediates: true });
+    cueFile.write(bytes);
+  }
+
+  return cueFile.uri;
 }
 
 export function getCueVolumeLevel(volume: RecordingCueVolume) {
