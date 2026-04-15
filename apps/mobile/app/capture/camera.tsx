@@ -25,6 +25,59 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
   const [status, setStatus] = useState("Ready to capture scene imagery.");
   const [busy, setBusy] = useState(false);
 
+  async function capturePhotoWithSystemCamera() {
+    setBusy(true);
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.8
+      });
+
+      if (result.canceled || !result.assets[0]?.uri) {
+        setStatus("Photo capture canceled.");
+        return;
+      }
+
+      setPhotoUri(result.assets[0].uri);
+      setStatus("Photo captured locally.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to capture photo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function captureVideoWithSystemCamera() {
+    if (!selectedIncidentId) {
+      setStatus("Select an incident before recording video.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["videos"],
+        videoMaxDuration: 120,
+        quality: 0.8
+      });
+
+      if (result.canceled || !result.assets[0]?.uri) {
+        setStatus("Video capture canceled.");
+        return;
+      }
+
+      const uri = result.assets[0].uri;
+      setVideoUri(uri);
+      const saved = await saveLocalVideoEvidence(selectedIncidentId, uri, "Scene Video", currentUser?.fullName);
+      await onUploaded();
+      setStatus(selectedIncidentId.startsWith("local-") ? `Scene video saved to this incident as ${saved.fileName}.` : `Scene video saved locally as ${saved.fileName}. Video AI interpretation is not connected yet.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to record video.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function capturePhoto() {
     if (!cameraRef.current) {
       return;
@@ -186,12 +239,19 @@ export default function CameraCaptureScreen({ currentUser, selectedIncidentId, o
         <AppButton label="Scene Photo" onPress={() => setCaptureKind("SCENE")} variant={captureKind === "SCENE" ? "primary" : "ghost"} />
         <AppButton label="Call Photo" onPress={() => setCaptureKind("CALL_FOR_SERVICE")} variant={captureKind === "CALL_FOR_SERVICE" ? "primary" : "ghost"} />
       </View>
-      <View style={styles.cameraShell}>
-        <CameraView ref={cameraRef} style={styles.camera} facing="back" />
-      </View>
+      {!compact ? (
+        <View style={styles.cameraShell}>
+          <CameraView ref={cameraRef} style={styles.camera} facing="back" />
+        </View>
+      ) : null}
       <View style={styles.row}>
-        <AppButton label="Capture Photo" onPress={capturePhoto} disabled={busy} />
-        <AppButton label={recordingVideo ? "Stop Video" : "Record Video"} onPress={recordingVideo ? stopVideoRecording : () => void startVideoRecording()} disabled={busy && !recordingVideo} variant={recordingVideo ? "danger" : "secondary"} />
+        <AppButton label="Capture Photo" onPress={compact ? () => void capturePhotoWithSystemCamera() : capturePhoto} disabled={busy} />
+        <AppButton
+          label={recordingVideo ? "Stop Video" : "Record Video"}
+          onPress={compact ? () => void captureVideoWithSystemCamera() : recordingVideo ? stopVideoRecording : () => void startVideoRecording()}
+          disabled={busy && !recordingVideo}
+          variant={recordingVideo ? "danger" : "secondary"}
+        />
         <AppButton label="Choose From Gallery" onPress={() => void pickFromGallery()} disabled={busy} variant="secondary" />
         <AppButton
           label={selectedIncidentId?.startsWith("local-") ? "Save Photo to Event" : captureKind === "CALL_FOR_SERVICE" ? "Upload Call Photo" : "Upload Scene Photo"}
