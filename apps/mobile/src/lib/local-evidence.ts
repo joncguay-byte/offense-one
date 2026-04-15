@@ -51,7 +51,8 @@ function timestampForFileName() {
 export async function saveLocalAudioEvidence(incidentId: string, sourceUri: string, createdBy?: string | null) {
   ensureEvidenceDirectory();
   const sourceFile = new File(sourceUri);
-  const fileName = `${incidentId}-scene-audio-${timestampForFileName()}.m4a`;
+  const extension = sourceFile.extension || ".m4a";
+  const fileName = `${incidentId}-scene-audio-${timestampForFileName()}${extension}`;
   const destination = new File(evidenceDirectory, fileName);
 
   if (destination.exists) {

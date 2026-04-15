@@ -26,6 +26,43 @@ import {
 import { signInWithOidc } from "../lib/oidc";
 import { uploadEvidenceFile, type EvidenceItemRecord } from "../lib/api";
 
+function inferAudioMimeType(pathOrFileName: string) {
+  const normalized = pathOrFileName.toLowerCase();
+  if (normalized.endsWith(".wav")) {
+    return "audio/wav";
+  }
+  if (normalized.endsWith(".mp3")) {
+    return "audio/mpeg";
+  }
+  if (normalized.endsWith(".aac")) {
+    return "audio/aac";
+  }
+  if (normalized.endsWith(".m4a") || normalized.endsWith(".mp4")) {
+    return "audio/mp4";
+  }
+  return "audio/mp4";
+}
+
+function inferAudioExtension(pathOrFileName: string) {
+  const normalized = pathOrFileName.toLowerCase();
+  if (normalized.endsWith(".wav")) {
+    return ".wav";
+  }
+  if (normalized.endsWith(".mp3")) {
+    return ".mp3";
+  }
+  if (normalized.endsWith(".aac")) {
+    return ".aac";
+  }
+  if (normalized.endsWith(".m4a")) {
+    return ".m4a";
+  }
+  if (normalized.endsWith(".mp4")) {
+    return ".mp4";
+  }
+  return ".m4a";
+}
+
 export async function signInOfficer() {
   const session = await login("officer@example.gov", "ChangeMe123!");
   setSessionToken(session.token);
@@ -84,9 +121,9 @@ export async function attachAudioEvidence(incidentId: string, path: string, curr
   await uploadEvidenceFile({
     incidentId,
     type: "AUDIO",
-    mimeType: "audio/m4a",
+    mimeType: inferAudioMimeType(path),
     uri: path,
-    name: "scene-audio.m4a",
+    name: `scene-audio${inferAudioExtension(path)}`,
     capturedAt: new Date().toISOString(),
     metadata: currentUser
       ? {
@@ -116,9 +153,9 @@ export async function attachOfficerVoiceReference(incidentId: string, path: stri
   return uploadEvidenceFile({
     incidentId,
     type: "AUDIO",
-    mimeType: "audio/m4a",
+    mimeType: inferAudioMimeType(path),
     uri: path,
-    name: "officer-reference.m4a",
+    name: `officer-reference${inferAudioExtension(path)}`,
     capturedAt: new Date().toISOString(),
     metadata: {
       sourceKind: "OFFICER_REFERENCE",
@@ -140,8 +177,8 @@ export async function loadMyVoiceProfile() {
 export async function saveMyVoiceProfile(path: string) {
   return uploadMyVoiceProfile({
     uri: path,
-    name: "officer-voice-profile.m4a",
-    mimeType: "audio/m4a"
+    name: `officer-voice-profile${inferAudioExtension(path)}`,
+    mimeType: inferAudioMimeType(path)
   });
 }
 
@@ -174,7 +211,7 @@ export async function uploadDraftEvidence(input: {
   const sourceKind = input.label?.toLowerCase().includes("call") ? "CALL_FOR_SERVICE" : "SCENE";
   const mimeType =
     input.type === "AUDIO"
-      ? "audio/m4a"
+      ? inferAudioMimeType(input.fileName || input.uri)
       : input.type === "VIDEO"
         ? "video/mp4"
         : "image/jpeg";

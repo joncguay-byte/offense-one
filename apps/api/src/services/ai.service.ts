@@ -60,7 +60,46 @@ function audioMimeTypeForPath(filePath: string) {
   if (extension === ".aac") {
     return "audio/aac";
   }
+  if (extension === ".m4a" || extension === ".mp4") {
+    return "audio/mp4";
+  }
   return "audio/mp4";
+}
+
+function buildSingleSpeakerTranscript(text: string, knownSpeakers: KnownSpeakerHint[] = []): DiarizedTranscript {
+  const trimmedText = text.trim() || "Audio was transcribed, but no text content was returned.";
+  return applyKnownSpeakerHints({
+    language: "en",
+    speakers: [{ speakerKey: "speaker_1", displayName: null, role: null }],
+    segments: [
+      {
+        speakerKey: "speaker_1",
+        startMs: 0,
+        endMs: Math.max(4000, trimmedText.split(/\s+/).length * 450),
+        text: trimmedText
+      }
+    ]
+  }, knownSpeakers);
+}
+
+async function fallbackTranscribeAudio(localPath: string, knownSpeakers: KnownSpeakerHint[] = []) {
+  const aiClient = requireAiClient("audio transcription");
+  if (!aiClient) {
+    throw new Error("OpenAI client is unavailable for fallback transcription.");
+  }
+
+  const fallbackResponse = await aiClient.audio.transcriptions.create({
+    file: createReadStream(localPath),
+    model: "whisper-1",
+    response_format: "text"
+  } as never);
+
+  const fallbackText =
+    typeof fallbackResponse === "string"
+      ? fallbackResponse
+      : String((fallbackResponse as { text?: unknown }).text || "");
+
+  return buildSingleSpeakerTranscript(fallbackText, knownSpeakers);
 }
 
 function applyKnownSpeakerHints(
@@ -112,12 +151,19 @@ export async function diarizeAudioFromEvidence(filePath: string, knownSpeakers: 
   }
 
   const localPath = await materializeEvidenceToLocalPath(filePath);
-  const transcription = await aiClient.audio.transcriptions.create({
-    file: createReadStream(localPath),
-    model: "gpt-4o-transcribe-diarize",
-    response_format: "diarized_json",
-    chunking_strategy: "auto"
-  } as never);
+  let transcription: unknown;
+  try {
+    transcription = await aiClient.audio.transcriptions.create({
+      file: createReadStream(localPath),
+      model: "gpt-4o-transcribe-diarize",
+      response_format: "diarized_json",
+      chunking_strategy: "auto"
+    } as never);
+  } catch (error) {
+    return fallbackTranscribeAudio(localPath, knownSpeakers).catch(() => {
+      throw error;
+    });
+  }
 
   const payload = transcription as unknown as Record<string, unknown>;
   const rawSegments = Array.isArray(payload.segments) ? payload.segments as Array<Record<string, unknown>> : [];
@@ -162,16 +208,23 @@ export async function diarizeAudioFromEvidenceWithReferences(
     })
   );
 
-  const transcription = await aiClient.audio.transcriptions.create({
-    file: createReadStream(localPath),
-    model: "gpt-4o-transcribe-diarize",
-    response_format: "diarized_json",
-    chunking_strategy: "auto",
-    extra_body: {
-      known_speaker_names: referenceClips.map((clip) => clip.displayName),
-      known_speaker_references: knownSpeakerReferences
-    }
-  } as never);
+  let transcription: unknown;
+  try {
+    transcription = await aiClient.audio.transcriptions.create({
+      file: createReadStream(localPath),
+      model: "gpt-4o-transcribe-diarize",
+      response_format: "diarized_json",
+      chunking_strategy: "auto",
+      extra_body: {
+        known_speaker_names: referenceClips.map((clip) => clip.displayName),
+        known_speaker_references: knownSpeakerReferences
+      }
+    } as never);
+  } catch (error) {
+    return fallbackTranscribeAudio(localPath, knownSpeakers).catch(() => {
+      throw error;
+    });
+  }
 
   const payload = transcription as unknown as Record<string, unknown>;
   const rawSegments = Array.isArray(payload.segments) ? payload.segments as Array<Record<string, unknown>> : [];
