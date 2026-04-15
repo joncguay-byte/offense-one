@@ -149,7 +149,7 @@ export default function App() {
 
   function createLocalIncident(payload: { caseNumber: string; title: string; location?: string }) {
     if (!currentUser) {
-      return;
+      return null;
     }
 
     const supervisor = supervisors[0] || getLocalUser("SUPERVISOR");
@@ -174,6 +174,53 @@ export default function App() {
     setSelectedIncidentId(incident.id);
     setScreen("event");
     setStatus("Event created. Add photos and choose recordings for the draft.");
+    return incident;
+  }
+
+  function buildAutoIncidentSeed() {
+    const stamp = new Date();
+    const compactDate = stamp.toISOString().slice(0, 10).replace(/-/g, "");
+    const compactTime = stamp.toTimeString().slice(0, 5).replace(":", "");
+    return {
+      caseNumber: `AUTO-${compactDate}-${compactTime}`,
+      title: draftNotes.trim() || `Field Event ${formatDateTime(stamp.toISOString())}`,
+      location: eventLocation.trim() || undefined
+    };
+  }
+
+  async function ensureIncidentForDraft() {
+    if (selectedIncident) {
+      return selectedIncident;
+    }
+
+    const seed = buildAutoIncidentSeed();
+
+    if (!standaloneMode && currentUser) {
+      const incident = await createIncidentWorkflow({
+        caseNumber: seed.caseNumber,
+        title: seed.title,
+        location: seed.location,
+        occurredAt: new Date().toISOString(),
+        createdById: currentUser.id
+      });
+      setIncidents((current) => [incident, ...current]);
+      setSelectedIncidentId(incident.id);
+      setCaseNumber(incident.caseNumber);
+      setEventTitle(incident.title);
+      setEventLocation(incident.location || "");
+      setStatus("Event created automatically from the selected draft evidence.");
+      return incident;
+    }
+
+    const incident = createLocalIncident(seed);
+    if (!incident) {
+      throw new Error("Sign in before generating a draft narrative.");
+    }
+    setCaseNumber(incident.caseNumber);
+    setEventTitle(incident.title);
+    setEventLocation(incident.location || "");
+    setStatus("Device event created automatically from the selected draft evidence.");
+    return incident;
   }
 
   async function createEventFromForm() {
@@ -341,15 +388,10 @@ export default function App() {
   }
 
   async function generateEventDraft() {
-    if (!selectedIncident) {
-      setStatus("Create or select an event first.");
-      return;
-    }
-
     const selectedEvidence = localEvidence.filter(
       (record) =>
         record.selectedForDraft &&
-        (record.incidentId === selectedIncident.id || record.incidentId === RECORDING_INBOX_ID)
+        (!selectedIncident || record.incidentId === selectedIncident.id || record.incidentId === RECORDING_INBOX_ID)
     );
     const selectedAudio = selectedEvidence.filter((record) => record.type === "AUDIO");
     if (selectedEvidence.length === 0 || selectedAudio.length === 0) {
@@ -357,9 +399,11 @@ export default function App() {
       return;
     }
 
-    if (standaloneMode || selectedIncident.id.startsWith("local-")) {
+    const activeIncident = await ensureIncidentForDraft();
+
+    if (standaloneMode || activeIncident.id.startsWith("local-")) {
       generateLocalReport(
-        selectedIncident.id,
+        activeIncident.id,
         [
           "AI narrative drafting is not available in local-only mode.",
           "To interpret the selected conversation and scene imagery, Offense One needs the hosted API running with an OpenAI API key so audio can be transcribed/diarized and photos can be analyzed.",
@@ -384,7 +428,7 @@ export default function App() {
         }
         uploadedEvidence.push(
           await uploadDraftEvidence({
-            incidentId: selectedIncident.id,
+            incidentId: activeIncident.id,
             type: record.type,
             uri: record.savedUri,
             fileName: record.fileName,
@@ -396,13 +440,13 @@ export default function App() {
 
       const uploadedAudio = uploadedEvidence.filter((record) => record.type === "AUDIO");
       for (const audio of uploadedAudio) {
-        const ingestJob = await ingestDraftAudioEvidence(selectedIncident.id, audio.id, currentUser);
+        const ingestJob = await ingestDraftAudioEvidence(activeIncident.id, audio.id, currentUser);
         await waitForDraftJob(ingestJob.jobId, `Transcribing ${audio.path.split(/[\\/]/).pop() || "audio"}`);
       }
 
       setStatus("Generating AI narrative from selected transcript and scene context...");
-      const reportJob = await generateDraftNarrative(selectedIncident.id, {
-        incidentTitle: selectedIncident.title,
+      const reportJob = await generateDraftNarrative(activeIncident.id, {
+        incidentTitle: activeIncident.title,
         officerPerspective: currentUser?.fullName || "Reporting officer",
         objective: draftNotes || "Generate a neutral police narrative report draft from selected evidence.",
         includeSceneSummary: uploadedEvidence.some((record) => record.type === "IMAGE"),
@@ -944,7 +988,7 @@ export default function App() {
               multiline
             />
             <View style={styles.actionGrid}>
-              <AppButton label="Generate Draft Narrative" onPress={generateEventDraft} disabled={!selectedIncident} />
+              <AppButton label="Generate Draft Narrative" onPress={generateEventDraft} disabled={selectedRecordings.length === 0} />
             </View>
             <View style={styles.generateStatusCard}>
               <Text style={styles.generateStatusTitle}>Draft Selection</Text>
@@ -957,6 +1001,13 @@ export default function App() {
                 {selectedSceneEvidence.length > 0
                   ? `${selectedSceneEvidence.length} photo/video item${selectedSceneEvidence.length === 1 ? "" : "s"} selected`
                   : "No scene photos or videos selected yet"}
+              </Text>
+              <Text style={styles.generateStatusBody}>
+                {selectedIncident
+                  ? `Draft will attach to ${selectedIncident.caseNumber}`
+                  : selectedRecordings.length > 0
+                    ? "No event selected. Offense One will create one automatically from the selected recording."
+                    : "Select a recording to enable draft generation"}
               </Text>
               <Text style={styles.generateStatusHint}>{status}</Text>
             </View>
