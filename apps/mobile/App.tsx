@@ -346,7 +346,11 @@ export default function App() {
       return;
     }
 
-    const selectedEvidence = localEvidence.filter((record) => record.selectedForDraft);
+    const selectedEvidence = localEvidence.filter(
+      (record) =>
+        record.selectedForDraft &&
+        (record.incidentId === selectedIncident.id || record.incidentId === RECORDING_INBOX_ID)
+    );
     const selectedAudio = selectedEvidence.filter((record) => record.type === "AUDIO");
     if (selectedEvidence.length === 0 || selectedAudio.length === 0) {
       setStatus("Select at least one audio recording for AI narrative drafting. Photos and videos can be added as supporting context.");
@@ -743,11 +747,13 @@ export default function App() {
   }
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
-  const audioRecordings = localEvidence.filter((record) => record.type === "AUDIO");
-  const selectedRecordings = localEvidence.filter((record) => record.type === "AUDIO" && record.selectedForDraft);
-  const sceneEvidence = localEvidence.filter(
-    (record) => (record.type === "IMAGE" || record.type === "VIDEO") && (!selectedIncidentId || record.incidentId === selectedIncidentId)
-  );
+  const eventScopedEvidence = selectedIncidentId
+    ? localEvidence.filter((record) => record.incidentId === selectedIncidentId || record.incidentId === RECORDING_INBOX_ID)
+    : localEvidence;
+  const audioRecordings = eventScopedEvidence.filter((record) => record.type === "AUDIO");
+  const selectedRecordings = audioRecordings.filter((record) => record.selectedForDraft);
+  const sceneEvidence = eventScopedEvidence.filter((record) => record.type === "IMAGE" || record.type === "VIDEO");
+  const selectedSceneEvidence = sceneEvidence.filter((record) => record.selectedForDraft);
 
   if (!currentUser) {
     return (
@@ -939,6 +945,20 @@ export default function App() {
             />
             <View style={styles.actionGrid}>
               <AppButton label="Generate Draft Narrative" onPress={generateEventDraft} disabled={!selectedIncident} />
+            </View>
+            <View style={styles.generateStatusCard}>
+              <Text style={styles.generateStatusTitle}>Draft Selection</Text>
+              <Text style={styles.generateStatusBody}>
+                {selectedRecordings.length > 0
+                  ? `${selectedRecordings.length} audio recording${selectedRecordings.length === 1 ? "" : "s"} selected`
+                  : "No audio recordings selected yet"}
+              </Text>
+              <Text style={styles.generateStatusBody}>
+                {selectedSceneEvidence.length > 0
+                  ? `${selectedSceneEvidence.length} photo/video item${selectedSceneEvidence.length === 1 ? "" : "s"} selected`
+                  : "No scene photos or videos selected yet"}
+              </Text>
+              <Text style={styles.generateStatusHint}>{status}</Text>
             </View>
             {selectedIncident?.generatedReports[0] ? <Text style={styles.draftPreview}>{selectedIncident.generatedReports[0].body}</Text> : null}
 
@@ -1310,5 +1330,28 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 15,
     lineHeight: 22
+  },
+  generateStatusCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs
+  },
+  generateStatusTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: theme.colors.ink
+  },
+  generateStatusBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.text
+  },
+  generateStatusHint: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.muted
   }
 });
