@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
   lockupTitle: {
     fontSize: 32,
     fontWeight: "900",
-    color: "#ffffff",
+    color: theme.colors.brandTitle,
     letterSpacing: 0.4,
     textShadowColor: "rgba(8, 14, 20, 0.28)",
     textShadowOffset: { width: 0, height: 2 },
@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
   },
   lockupSubtitle: {
     fontSize: 14,
-    color: "#d7e3e8",
+    color: theme.colors.brandSubtitle,
     letterSpacing: 0.3
   }
 });

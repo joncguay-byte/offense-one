@@ -9,7 +9,7 @@ import { loadApiBaseUrlPreference, saveApiBaseUrlPreference } from "../../src/li
 import { buildToneDataUri, getCueVolumeLevel } from "../../src/lib/recording-cues";
 import { getApiBaseUrl, setApiBaseUrl, type AuthUser } from "../../src/lib/api";
 import { loadMyVoiceProfile, removeMyVoiceProfile } from "../../src/features/reporting";
-import { theme } from "../../src/ui/theme";
+import { getStoredThemeMode, saveThemeModePreference, theme, type ThemeMode } from "../../src/ui/theme";
 
 type Props = {
   currentUser: AuthUser | null;
@@ -33,6 +33,7 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
   const [accountBadge, setAccountBadge] = useState(currentUser?.badgeNumber || "");
   const [accountPassword, setAccountPassword] = useState("");
   const [apiBaseUrl, setApiBaseUrlInput] = useState(getApiBaseUrl());
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode());
   const [status, setStatus] = useState("Loading saved preferences...");
   const [updateStatus, setUpdateStatus] = useState(Updates.isEnabled ? "Updates are enabled for installed builds." : "Updates are unavailable in Expo Go/dev mode.");
 
@@ -176,6 +177,21 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
     }
   }
 
+  async function changeThemeMode(nextMode: ThemeMode) {
+    try {
+      await saveThemeModePreference(nextMode);
+      setThemeMode(nextMode);
+      setStatus(`${nextMode === "dark" ? "Dark" : "Light"} mode saved. Offense One will restart to apply it.`);
+      if (Updates.isEnabled) {
+        await Updates.reloadAsync();
+      } else {
+        setStatus(`${nextMode === "dark" ? "Dark" : "Light"} mode saved. Fully close and reopen the app to apply it here.`);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to save theme preference.");
+    }
+  }
+
   return (
     <Screen>
       <HeroCard
@@ -198,6 +214,16 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
           <AppButton label="Soft" onPress={() => void setCueVolume("soft")} variant={settings.volume === "soft" ? "primary" : "ghost"} />
           <AppButton label="Standard" onPress={() => void setCueVolume("standard")} variant={settings.volume === "standard" ? "primary" : "ghost"} />
           <AppButton label="Loud" onPress={() => void setCueVolume("loud")} variant={settings.volume === "loud" ? "primary" : "ghost"} />
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Appearance" subtitle="Choose the app theme. The app will restart once you switch it.">
+        <View style={styles.tagRow}>
+          <Tag label={`Theme: ${themeMode}`} tone="success" active />
+        </View>
+        <View style={styles.row}>
+          <AppButton label="Light Mode" onPress={() => void changeThemeMode("light")} variant={themeMode === "light" ? "primary" : "ghost"} />
+          <AppButton label="Dark Mode" onPress={() => void changeThemeMode("dark")} variant={themeMode === "dark" ? "primary" : "ghost"} />
         </View>
       </SectionCard>
 

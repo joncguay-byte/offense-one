@@ -1089,7 +1089,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: theme.colors.surface
+    backgroundColor: theme.colors.appBackground
   },
   container: {
     padding: theme.spacing.lg,

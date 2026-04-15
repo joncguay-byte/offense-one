@@ -143,19 +143,19 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   eyebrow: {
-    color: "#9cc5cf",
+    color: theme.colors.heroEyebrow,
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.6,
     textTransform: "uppercase"
   },
   heroTitle: {
-    color: "#f7fafc",
+    color: theme.colors.heroTitle,
     fontSize: 28,
     fontWeight: "800"
   },
   heroBody: {
-    color: "#c9d6dc",
+    color: theme.colors.heroBody,
     fontSize: 15,
     lineHeight: 22
   },
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   buttonTextOnDark: {
-    color: "#f7fafc"
+    color: theme.colors.onDark
   },
   buttonTextOnLight: {
     color: theme.colors.ink
