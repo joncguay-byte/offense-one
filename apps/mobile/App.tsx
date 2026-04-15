@@ -74,6 +74,7 @@ export default function App() {
   const [archivedIncidentIds, setArchivedIncidentIds] = useState<string[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [status, setStatus] = useState("Sign in to begin field capture.");
+  const [sessionNotice, setSessionNotice] = useState("");
   const [standaloneMode, setStandaloneMode] = useState(false);
   const [loginEmail, setLoginEmail] = useState("officer@example.gov");
   const [loginPassword, setLoginPassword] = useState("ChangeMe123!");
@@ -474,10 +475,11 @@ export default function App() {
     const expoToken = await registerForExpoPushToken();
     if (expoToken) {
       await registerPushToken("EXPO", expoToken);
-      setStatus(`${modeLabel} as ${user.fullName}. Push ready.`);
+      setSessionNotice(`${modeLabel} as ${user.fullName}. Push ready.`);
     } else {
-      setStatus(`${modeLabel} as ${user.fullName}. Push token unavailable on this device or project.`);
+      setSessionNotice(`${modeLabel} as ${user.fullName}. Push token unavailable on this device or project.`);
     }
+    setStatus("Create or open an event, then select recordings for draft generation.");
   }
 
   async function ensureLocalIncident(userRole: LocalLoginRole) {
@@ -510,7 +512,8 @@ export default function App() {
     setNotifications([]);
     setSelectedIncidentId("local-incident-1");
     setScreen("recording");
-    setStatus("Signed in. Recording, camera, settings, and review screens are available. Cloud sync requires the agency API.");
+    setSessionNotice("Signed in on this device. Recording, camera, settings, and review screens are available.");
+    setStatus("Create or open an event, then select recordings for draft generation.");
   }
 
   async function persistLoginIfNeeded(role: LocalLoginRole) {
@@ -670,6 +673,7 @@ export default function App() {
     setNotifications([]);
     setLocalEvidence([]);
     setScreen("recording");
+    setSessionNotice("");
     setStatus("Signed out. Enter your email and password to continue.");
   }
 
@@ -892,6 +896,8 @@ export default function App() {
             <AppButton label="Sign Out" onPress={() => void signOut()} variant="ghost" />
           </View>
         </View>
+
+        {sessionNotice ? <Text style={styles.sessionNotice}>{sessionNotice}</Text> : null}
 
         <View style={styles.quickStats}>
           <MetricCard label="Events" value={String(incidents.length)} />
@@ -1136,6 +1142,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing.xs
+  },
+  sessionNotice: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.muted
   },
   actionGrid: {
     flexDirection: "row",
