@@ -488,12 +488,16 @@ export default function App() {
     setJobs([]);
     setNotifications([]);
     setScreen("recording");
-    const expoToken = await registerForExpoPushToken();
-    if (expoToken) {
-      await registerPushToken("EXPO", expoToken);
-      setSessionNotice(`${modeLabel} as ${user.fullName}. Push ready.`);
-    } else {
-      setSessionNotice(`${modeLabel} as ${user.fullName}. Push token unavailable on this device or project.`);
+    try {
+      const expoToken = await registerForExpoPushToken();
+      if (expoToken) {
+        await registerPushToken("EXPO", expoToken);
+        setSessionNotice(`${modeLabel} as ${user.fullName}. Push ready.`);
+      } else {
+        setSessionNotice(`${modeLabel} as ${user.fullName}. Push token unavailable on this device or project.`);
+      }
+    } catch {
+      setSessionNotice(`${modeLabel} as ${user.fullName}. Push registration failed, but your account session is active.`);
     }
     setStatus("Create or open an event, then select recordings for draft generation.");
   }
