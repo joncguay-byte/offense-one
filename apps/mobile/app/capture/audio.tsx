@@ -12,6 +12,7 @@ import { theme } from "../../src/ui/theme";
 type Props = {
   currentUser: AuthUser | null;
   selectedIncidentId: string | null;
+  selectedIncidentLabel?: string | null;
   onUploaded: () => Promise<void>;
   onEvidenceSaved?: () => Promise<void> | void;
 };
@@ -30,7 +31,7 @@ function describeInput(input: RecordingInput) {
   return `${input.name} (${input.type})`;
 }
 
-export default function AudioCaptureScreen({ currentUser, selectedIncidentId, onUploaded, onEvidenceSaved }: Props) {
+export default function AudioCaptureScreen({ currentUser, selectedIncidentId, selectedIncidentLabel, onUploaded, onEvidenceSaved }: Props) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
   const startTonePlayer = useMemo(() => createAudioPlayer(null), []);
@@ -378,7 +379,7 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, on
           </View>
         </View>
         <View style={styles.tagRow}>
-          <Tag label={selectedIncidentId || "No event selected"} active={!!selectedIncidentId} />
+          <Tag label={selectedIncidentLabel || (selectedIncidentId ? "Selected event" : "Recording inbox")} active={!!selectedIncidentId} />
           {currentUser ? <Tag label={`Known officer: ${currentUser.fullName}`} tone="success" /> : null}
           {referenceReady ? <Tag label="Voice reference ready" tone="success" /> : null}
           {profileReady ? <Tag label="Reusable profile saved" tone="success" /> : null}

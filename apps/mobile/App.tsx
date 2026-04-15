@@ -919,7 +919,13 @@ export default function App() {
 
         {screen === "recording" ? (
           <View style={styles.sectionStack}>
-            <AudioCaptureScreen currentUser={currentUser} selectedIncidentId={selectedIncidentId} onUploaded={refreshIncidents} onEvidenceSaved={refreshLocalEvidence} />
+            <AudioCaptureScreen
+              currentUser={currentUser}
+              selectedIncidentId={selectedIncidentId}
+              selectedIncidentLabel={selectedIncident ? `${selectedIncident.caseNumber} - ${selectedIncident.title}` : null}
+              onUploaded={refreshIncidents}
+              onEvidenceSaved={refreshLocalEvidence}
+            />
           </View>
         ) : null}
 
