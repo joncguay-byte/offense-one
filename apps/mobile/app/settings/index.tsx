@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
-import { createAudioPlayer } from "expo-audio";
+import { AudioModule, RecordingPresets, createAudioPlayer, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
 import * as Updates from "expo-updates";
 import { AppButton, HeroCard, Screen, SectionCard, Tag } from "../../src/ui/components";
 import { loadRecordingCueSettings, saveRecordingCueSettings, type RecordingCueSettings, type RecordingCueVolume } from "../../src/lib/audio-settings";
@@ -8,7 +8,7 @@ import { loadLocalAccountProfiles, type LocalAccountProfile } from "../../src/li
 import { loadApiBaseUrlPreference, saveApiBaseUrlPreference } from "../../src/lib/api-settings";
 import { buildToneDataUri, getCueVolumeLevel } from "../../src/lib/recording-cues";
 import { getApiBaseUrl, setApiBaseUrl, type AuthUser } from "../../src/lib/api";
-import { loadMyVoiceProfile, removeMyVoiceProfile } from "../../src/features/reporting";
+import { loadMyVoiceProfile, removeMyVoiceProfile, saveMyVoiceProfile } from "../../src/features/reporting";
 import { getStoredThemeMode, saveThemeModePreference, theme, type ThemeMode } from "../../src/ui/theme";
 
 type Props = {
@@ -19,6 +19,8 @@ type Props = {
 
 export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onSignOut }: Props) {
   const cuePreviewPlayer = useMemo(() => createAudioPlayer({ uri: buildToneDataUri(1046, 140) }), []);
+  const voiceRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const voiceRecorderState = useAudioRecorderState(voiceRecorder);
   const [settings, setSettings] = useState<RecordingCueSettings>({
     enabled: true,
     volume: "standard",
@@ -36,6 +38,7 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode());
   const [status, setStatus] = useState("Loading saved preferences...");
   const [updateStatus, setUpdateStatus] = useState(Updates.isEnabled ? "Updates are enabled for installed builds." : "Updates are unavailable in Expo Go/dev mode.");
+  const [voiceTrainingUri, setVoiceTrainingUri] = useState("");
 
   useEffect(() => {
     loadRecordingCueSettings()
@@ -57,6 +60,23 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
           setApiBaseUrl(value);
           setApiBaseUrlInput(value);
         }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    AudioModule.requestRecordingPermissionsAsync()
+      .then((permission) => {
+        if (!permission.granted) {
+          setStatus("Microphone permission is required for voice training.");
+          return;
+        }
+
+        return setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+          shouldRouteThroughEarpiece: false
+        });
       })
       .catch(() => undefined);
   }, []);
@@ -135,6 +155,57 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
       badgeNumber: accountBadge.trim() || null
     });
     setStatus(currentUser.id.startsWith("local-") ? "Account name, username, and password saved on this device." : "Account changes saved to the live backend.");
+  }
+
+  async function startVoiceTrainingCapture() {
+    try {
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false
+      });
+      await voiceRecorder.prepareToRecordAsync();
+      voiceRecorder.record();
+      setVoiceTrainingUri("");
+      setStatus("Voice training recording in progress. Read the suggested script naturally.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to start voice training recording.");
+    }
+  }
+
+  async function stopVoiceTrainingCapture() {
+    try {
+      await voiceRecorder.stop();
+      const uri = voiceRecorder.uri || voiceRecorderState.url || "";
+      if (!uri) {
+        setStatus("Voice training finished, but no file was returned.");
+        return;
+      }
+      setVoiceTrainingUri(uri);
+      setStatus("Voice training sample captured. Tap Save Voice Model to train Offense One on your voice.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to stop voice training recording.");
+    }
+  }
+
+  async function saveVoiceTrainingProfile() {
+    if (!currentUser) {
+      setStatus("Sign in before training your voice.");
+      return;
+    }
+
+    if (!voiceTrainingUri) {
+      setStatus("Record a voice sample first.");
+      return;
+    }
+
+    try {
+      await saveMyVoiceProfile(voiceTrainingUri);
+      setHasVoiceProfile(true);
+      setStatus("Voice model saved. Offense One will use it as your reusable voice reference during draft generation.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to save your voice model.");
+    }
   }
 
   async function saveApiUrl() {
@@ -383,9 +454,34 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
           <Tag label={hasVoiceProfile ? "Voice model ready" : "No voice model saved"} tone={hasVoiceProfile ? "success" : "warning"} active />
         </View>
         <Text style={styles.preferenceValue}>
-          Go to `Recording`, make a short clean recording of only your voice, then tap `Train My Voice`. Offense One will use that saved profile as your voice reference during transcription and draft generation.
+          Offense One does not require a secret biometric phrase, but it learns better from a clean, consistent sample.
+        </Text>
+        <Text style={styles.preferenceValue}>
+          Suggested script:
+          {"\n"}`My name is {currentUser?.fullName || "the reporting officer"}. I am creating a voice reference for Offense One. This sample will help identify my voice in future draft narratives.`
+        </Text>
+        <Text style={styles.preferenceValue}>
+          Read that once or twice in a natural voice in a quiet place, then save the sample below.
         </Text>
         <View style={styles.row}>
+          <AppButton
+            label={voiceRecorderState.isRecording ? "Recording..." : "Start Voice Training"}
+            onPress={() => void startVoiceTrainingCapture()}
+            disabled={voiceRecorderState.isRecording}
+            variant="secondary"
+          />
+          <AppButton
+            label="Stop Voice Training"
+            onPress={() => void stopVoiceTrainingCapture()}
+            disabled={!voiceRecorderState.isRecording}
+            variant="danger"
+          />
+          <AppButton
+            label="Save Voice Model"
+            onPress={() => void saveVoiceTrainingProfile()}
+            disabled={!voiceTrainingUri}
+            variant="primary"
+          />
           <AppButton
             label="Delete Saved Voice Model"
             onPress={() =>

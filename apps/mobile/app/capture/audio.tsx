@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AudioModule, RecordingInput, RecordingPresets, createAudioPlayer, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
 import { StyleSheet, Text, View } from "react-native";
-import { attachAudioEvidence, attachOfficerVoiceReference, loadMyVoiceProfile, saveMyVoiceProfile } from "../../src/features/reporting";
+import { attachAudioEvidence, attachOfficerVoiceReference, loadMyVoiceProfile } from "../../src/features/reporting";
 import { loadRecordingCueSettings, saveRecordingCueSettings, type RecordingCueVolume } from "../../src/lib/audio-settings";
 import { deleteLocalEvidence, loadLocalEvidence, saveLocalAudioEvidence, type LocalEvidenceRecord } from "../../src/lib/local-evidence";
 import { ensureCueFile, getCueVolumeLevel } from "../../src/lib/recording-cues";
@@ -365,30 +365,6 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, se
     }
   }
 
-  async function saveReusableProfile() {
-    if (!recordingUri || !currentUser) {
-      setStatus("Record a short officer sample first.");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      if (currentUser.id.startsWith("local-")) {
-        setProfileReady(true);
-        setStatus("Reusable officer voice profile saved on this device.");
-        return;
-      }
-
-      await saveMyVoiceProfile(recordingUri);
-      setProfileReady(true);
-      setStatus("Reusable officer voice profile saved. New incidents can use it automatically.");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to save reusable voice profile.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <Screen>
       <SectionCard title="Recording Controls">
@@ -418,13 +394,9 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, se
           <AppButton label="Loud" onPress={() => void previewCueVolume("loud")} variant={cueVolume === "loud" ? "primary" : "ghost"} />
         </View>
         <View style={styles.row}>
-          <AppButton label="Train My Voice" onPress={saveReusableProfile} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
           <AppButton label="Save Event Voice Reference" onPress={uploadOfficerReference} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
           {!selectedIncidentId?.startsWith("local-") ? <AppButton label="Upload Audio" onPress={uploadRecording} disabled={busy || !recordingUri} variant="ghost" /> : null}
         </View>
-        <Text style={styles.panelCopy}>
-          Record a short clean sample of only your voice, then tap `Train My Voice` to save a reusable voice profile for future draft narratives.
-        </Text>
       </SectionCard>
 
       <SectionCard title="Recordings by Date and Time" subtitle={status}>
