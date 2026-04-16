@@ -418,10 +418,13 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, se
           <AppButton label="Loud" onPress={() => void previewCueVolume("loud")} variant={cueVolume === "loud" ? "primary" : "ghost"} />
         </View>
         <View style={styles.row}>
-          <AppButton label="Save Reusable Profile" onPress={saveReusableProfile} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
-          <AppButton label="Use as Officer Reference" onPress={uploadOfficerReference} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
+          <AppButton label="Train My Voice" onPress={saveReusableProfile} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
+          <AppButton label="Save Event Voice Reference" onPress={uploadOfficerReference} disabled={busy || !recordingUri || !currentUser} variant="secondary" />
           {!selectedIncidentId?.startsWith("local-") ? <AppButton label="Upload Audio" onPress={uploadRecording} disabled={busy || !recordingUri} variant="ghost" /> : null}
         </View>
+        <Text style={styles.panelCopy}>
+          Record a short clean sample of only your voice, then tap `Train My Voice` to save a reusable voice profile for future draft narratives.
+        </Text>
       </SectionCard>
 
       <SectionCard title="Recordings by Date and Time" subtitle={status}>

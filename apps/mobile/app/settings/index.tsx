@@ -378,13 +378,16 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
         </View>
       </SectionCard>
 
-      <SectionCard title="Officer Voice Profile" subtitle="Manage the reusable officer voice identity used to improve diarized attribution.">
+      <SectionCard title="Train My Voice" subtitle="Save a reusable voice sample so Offense One can better identify you in draft narratives.">
         <View style={styles.tagRow}>
-          <Tag label={hasVoiceProfile ? "Voice profile saved" : "No saved voice profile"} tone={hasVoiceProfile ? "success" : "warning"} active />
+          <Tag label={hasVoiceProfile ? "Voice model ready" : "No voice model saved"} tone={hasVoiceProfile ? "success" : "warning"} active />
         </View>
+        <Text style={styles.preferenceValue}>
+          Go to `Recording`, make a short clean recording of only your voice, then tap `Train My Voice`. Offense One will use that saved profile as your voice reference during transcription and draft generation.
+        </Text>
         <View style={styles.row}>
           <AppButton
-            label="Delete Voice Profile"
+            label="Delete Saved Voice Model"
             onPress={() =>
               void removeMyVoiceProfile()
                 .then(() => {
