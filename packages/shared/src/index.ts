@@ -103,12 +103,27 @@ export function buildNarrativePrompt(input: {
   transcript: DiarizedTranscript;
   sceneContext: SceneImageContext[];
 }) {
+  const speakerDirectory = new Map(
+    input.transcript.speakers.map((speaker) => [
+      speaker.speakerKey,
+      {
+        displayName: speaker.displayName || null,
+        role: speaker.role || null
+      }
+    ])
+  );
+
   const speakerText = input.transcript.speakers
     .map((speaker) => `${speaker.speakerKey}: ${speaker.displayName || "Unlabeled speaker"}${speaker.role ? ` (${speaker.role})` : ""}`)
     .join("\n");
 
   const transcriptText = input.transcript.segments
-    .map((segment) => `${segment.speakerKey} [${segment.startMs}-${segment.endMs}]: ${segment.text}`)
+    .map((segment) => {
+      const speaker = speakerDirectory.get(segment.speakerKey);
+      const label = speaker?.displayName || segment.speakerKey;
+      const roleSuffix = speaker?.role ? ` (${speaker.role})` : "";
+      return `${label}${roleSuffix} [${segment.speakerKey}] [${segment.startMs}-${segment.endMs}]: ${segment.text}`;
+    })
     .join("\n");
 
   const sceneText = input.sceneContext
@@ -122,6 +137,8 @@ export function buildNarrativePrompt(input: {
     "If facts are uncertain or incomplete, say so directly in the confidence notes.",
     "Write the narrative in short, professional report prose.",
     "Prefer this order when supported by the evidence: call context, officer observations, witness or subject statements, officer actions, disposition.",
+    "When a known speaker has a display name, use that name in the narrative instead of generic labels like speaker_1.",
+    "If the officer speaker is identified by name, attribute that speech and those actions to that named officer in neutral report language.",
     "If call-for-service details are available, use them only as context and not as proof of what actually occurred.",
     "Every citation must identify the source, explain why it supports the narrative, and include a short excerpt or observation summary.",
     "",

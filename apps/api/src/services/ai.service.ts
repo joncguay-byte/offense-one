@@ -165,11 +165,50 @@ function applyKnownSpeakerHints(
   }
 
   const nextSpeakers = [...transcript.speakers];
-  const officerHint = knownSpeakers.find((speaker) => speaker.role === "OFFICER") || knownSpeakers[0];
-  const firstSpeaker = nextSpeakers[0];
-  if (officerHint && firstSpeaker) {
-    firstSpeaker.displayName = officerHint.displayName;
-    firstSpeaker.role = officerHint.role;
+  const segmentCounts = new Map<string, number>();
+  for (const segment of transcript.segments) {
+    segmentCounts.set(segment.speakerKey, (segmentCounts.get(segment.speakerKey) || 0) + 1);
+  }
+
+  const remainingHints = [...knownSpeakers];
+
+  for (const speaker of nextSpeakers) {
+    const matchIndex = remainingHints.findIndex((hint) => hint.speakerKey && hint.speakerKey === speaker.speakerKey);
+    if (matchIndex >= 0) {
+      const [match] = remainingHints.splice(matchIndex, 1);
+      speaker.displayName = match.displayName;
+      speaker.role = match.role;
+    }
+  }
+
+  for (const speaker of nextSpeakers) {
+    if (speaker.displayName) {
+      continue;
+    }
+
+    const matchIndex = remainingHints.findIndex((hint) => hint.displayName === speaker.speakerKey);
+    if (matchIndex >= 0) {
+      const [match] = remainingHints.splice(matchIndex, 1);
+      speaker.displayName = match.displayName;
+      speaker.role = match.role;
+    }
+  }
+
+  const officerHint = remainingHints.find((speaker) => speaker.role === "OFFICER") || remainingHints[0];
+  if (officerHint) {
+    const alreadyAssigned = nextSpeakers.some((speaker) => speaker.displayName === officerHint.displayName);
+    if (!alreadyAssigned) {
+      const bestOfficerCandidate = [...nextSpeakers].sort((left, right) => {
+        const rightCount = segmentCounts.get(right.speakerKey) || 0;
+        const leftCount = segmentCounts.get(left.speakerKey) || 0;
+        return rightCount - leftCount;
+      })[0];
+
+      if (bestOfficerCandidate) {
+        bestOfficerCandidate.displayName = officerHint.displayName;
+        bestOfficerCandidate.role = officerHint.role;
+      }
+    }
   }
 
   return {
@@ -391,6 +430,13 @@ export async function generateNarrativeDraft(
 
   const aiClient = requireAiClient("narrative generation");
   if (!aiClient) {
+    const speakerLabels = new Map(
+      transcript.speakers.map((speaker) => [
+        speaker.speakerKey,
+        speaker.displayName || speaker.role || speaker.speakerKey
+      ])
+    );
+
     return {
       body: [
         "On the listed date and time, officers responded to the reported call for service.",
@@ -399,14 +445,14 @@ export async function generateNarrativeDraft(
         `Summary basis: ${request.incidentTitle}`,
         "",
         transcript.segments
-          .map((segment) => `[${segment.speakerKey}] ${segment.text}`)
+          .map((segment) => `[${speakerLabels.get(segment.speakerKey) || segment.speakerKey}] ${segment.text}`)
           .join("\n")
       ].join("\n"),
       citations: transcript.segments.map((segment, index) => ({
         sourceType: "audio_segment",
         sourceId: `${segment.speakerKey}-${index + 1}`,
         note: `${segment.startMs}ms-${segment.endMs}ms`,
-        sourceLabel: segment.speakerKey,
+        sourceLabel: speakerLabels.get(segment.speakerKey) || segment.speakerKey,
         excerpt: segment.text
       })),
       confidence: {
