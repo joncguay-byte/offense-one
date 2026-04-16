@@ -24,7 +24,7 @@ import {
   uploadMyVoiceProfile
 } from "../lib/api";
 import { signInWithOidc } from "../lib/oidc";
-import { uploadEvidenceFile, type EvidenceItemRecord } from "../lib/api";
+import { updateMyAccount, uploadEvidenceFile, type EvidenceItemRecord } from "../lib/api";
 
 function inferAudioMimeType(pathOrFileName: string) {
   const normalized = pathOrFileName.toLowerCase();
@@ -99,6 +99,15 @@ export async function signInOidc() {
 
 export async function loadCurrentUser() {
   return getCurrentUser();
+}
+
+export async function saveMyLiveAccount(payload: {
+  email: string;
+  password: string;
+  fullName: string;
+  badgeNumber?: string | null;
+}) {
+  return updateMyAccount(payload);
 }
 
 export async function createIncidentWorkflow(payload: CreateIncidentPayload) {

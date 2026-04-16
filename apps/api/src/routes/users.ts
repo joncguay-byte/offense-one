@@ -4,10 +4,18 @@ import { prisma } from "../db.js";
 import { registerPushToken } from "../services/push.service.js";
 import { persistEvidenceUpload } from "../services/storage.service.js";
 import { upsertVoiceProfile, getVoiceProfile, deleteVoiceProfile } from "../services/voice-profile.service.js";
+import { hashPassword } from "../services/auth.service.js";
 
 const registerPushTokenSchema = z.object({
   provider: z.enum(["EXPO", "APNS", "FCM"]),
   token: z.string().min(1)
+});
+
+const updateMyAccountSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  fullName: z.string().min(1),
+  badgeNumber: z.string().trim().nullable().optional()
 });
 
 export const userRoutes: FastifyPluginAsync = async (app) => {
@@ -35,6 +43,44 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       provider: body.provider,
       token: body.token
     });
+  });
+
+  app.patch("/users/me/account", async (request, reply) => {
+    if (!request.authUser) {
+      reply.code(401);
+      return { message: "Unauthorized." };
+    }
+
+    const body = updateMyAccountSchema.parse(request.body);
+    const existingUser = await prisma.user.findUnique({
+      where: { email: body.email },
+      select: { id: true }
+    });
+
+    if (existingUser && existingUser.id !== request.authUser.sub) {
+      reply.code(409);
+      return { message: "An account with that email already exists." };
+    }
+
+    const user = await prisma.user.update({
+      where: { id: request.authUser.sub },
+      data: {
+        email: body.email,
+        fullName: body.fullName,
+        badgeNumber: body.badgeNumber || null,
+        passwordHash: hashPassword(body.password)
+      }
+    });
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        fullName: user.fullName,
+        badgeNumber: user.badgeNumber
+      }
+    };
   });
 
   app.get("/users/me/voice-profile", async (request, reply) => {

@@ -115,6 +115,18 @@ export function getCurrentUser() {
   return request<{ user: AuthUser }>("/auth/me");
 }
 
+export function updateMyAccount(payload: {
+  email: string;
+  password: string;
+  fullName: string;
+  badgeNumber?: string | null;
+}) {
+  return request<{ user: AuthUser }>("/users/me/account", {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
 export type CreateIncidentPayload = {
   caseNumber: string;
   title: string;

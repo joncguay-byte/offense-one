@@ -28,6 +28,7 @@ import {
   ingestDraftAudioEvidence,
   uploadDraftEvidence
 } from "./src/features/reporting";
+import { saveMyLiveAccount } from "./src/features/reporting";
 import { setSessionToken, type AuthUser, type IncidentRecord } from "./src/lib/api";
 import { loadApiBaseUrlPreference } from "./src/lib/api-settings";
 import { setApiBaseUrl } from "./src/lib/api";
@@ -659,6 +660,26 @@ export default function App() {
   }
 
   async function handleLocalAccountUpdated(profile: LocalAccountProfile) {
+    if (currentUser && !standaloneMode && !currentUser.id.startsWith("local-")) {
+      const result = await saveMyLiveAccount({
+        email: profile.email,
+        password: profile.password,
+        fullName: profile.fullName,
+        badgeNumber: profile.badgeNumber || null
+      });
+      setCurrentUser(result.user);
+      setLoginEmail(profile.email);
+      setLoginPassword(profile.password);
+      setLoginRole(profile.role);
+      if (rememberLogin) {
+        const nextLogin = { email: profile.email, password: profile.password, role: profile.role, sessionVersion: appSessionVersion };
+        await saveLoginPreference(nextLogin);
+        setSavedLogin(nextLogin);
+      }
+      setStatus(`${profile.role === "ADMIN" ? "Admin" : profile.role === "SUPERVISOR" ? "Supervisor" : "Officer"} account updated on the live backend.`);
+      return;
+    }
+
     const user = await saveLocalAccountProfile(profile);
     if (currentUser?.role === profile.role) {
       setCurrentUser(user);
