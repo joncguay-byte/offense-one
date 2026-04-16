@@ -70,6 +70,14 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
       return;
     }
 
+    if (!currentUser.id.startsWith("local-")) {
+      setAccountName(currentUser.fullName);
+      setAccountEmail(currentUser.email);
+      setAccountBadge(currentUser.badgeNumber || "");
+      setAccountPassword("");
+      return;
+    }
+
     loadLocalAccountProfiles()
       .then((profiles) => {
         const profile = profiles[currentUser.role === "ADMIN" ? "ADMIN" : currentUser.role === "SUPERVISOR" ? "SUPERVISOR" : "OFFICER"];
@@ -126,7 +134,7 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
       password: accountPassword,
       badgeNumber: accountBadge.trim() || null
     });
-    setStatus("Account name, username, and password saved on this device.");
+    setStatus(currentUser.id.startsWith("local-") ? "Account name, username, and password saved on this device." : "Account changes saved to the live backend.");
   }
 
   async function saveApiUrl() {
@@ -227,7 +235,12 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
         </View>
       </SectionCard>
 
-      <SectionCard title="Account and Sign Out" subtitle="Change the local standalone username/password and sign out when you are done.">
+      <SectionCard title="Account and Sign Out" subtitle={currentUser?.id.startsWith("local-") ? "Change the local standalone username/password and sign out when you are done." : "Update your live backend account details and sign out when you are done."}>
+        <Text style={styles.preferenceValue}>
+          {currentUser?.id.startsWith("local-")
+            ? "These changes stay on this device."
+            : "These changes update your live backend account."}
+        </Text>
         <View style={styles.tagRow}>
           <Tag label={currentUser ? `${currentUser.role}` : "Not signed in"} tone={currentUser ? "success" : "warning"} active />
         </View>
