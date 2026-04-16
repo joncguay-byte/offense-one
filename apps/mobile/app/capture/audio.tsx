@@ -288,6 +288,29 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, se
     }
   }
 
+  async function stopPlayback() {
+    try {
+      playbackPlayer.pause();
+      await playbackPlayer.seekTo(0);
+      setStatus("Playback stopped.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to stop playback.");
+    }
+  }
+
+  async function seekPlayback(seconds: number) {
+    try {
+      const status = playbackPlayer.currentStatus;
+      const currentSeconds = status.currentTime ?? 0;
+      const durationSeconds = status.duration ?? currentSeconds;
+      const nextSeconds = Math.max(0, Math.min(durationSeconds, currentSeconds + seconds));
+      await playbackPlayer.seekTo(nextSeconds);
+      setStatus(`${seconds < 0 ? "Moved back" : "Moved forward"} ${Math.abs(seconds)} seconds.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to change playback position.");
+    }
+  }
+
   async function uploadRecording() {
     if (!selectedIncidentId || !recordingUri) {
       setStatus("Select an incident and capture audio first.");
@@ -412,6 +435,9 @@ export default function AudioCaptureScreen({ currentUser, selectedIncidentId, se
               <Text style={styles.path}>{record.savedUri}</Text>
               <View style={styles.row}>
                 <AppButton label="Play" onPress={() => void playRecording(record)} disabled={busy} variant="secondary" />
+                <AppButton label="Back 15" onPress={() => void seekPlayback(-15)} disabled={busy} variant="ghost" />
+                <AppButton label="Forward 15" onPress={() => void seekPlayback(15)} disabled={busy} variant="ghost" />
+                <AppButton label="Stop" onPress={() => void stopPlayback()} disabled={busy} variant="ghost" />
                 <AppButton label="Delete" onPress={() => void deleteRecording(record.id)} disabled={busy} variant="danger" />
               </View>
             </View>
