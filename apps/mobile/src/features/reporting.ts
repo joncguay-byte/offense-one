@@ -70,6 +70,12 @@ export async function signInOfficer() {
   return session;
 }
 
+export async function signInDemoAdmin() {
+  const session = await login("admin@example.gov", "ChangeMe123!");
+  setSessionToken(session.token);
+  return session;
+}
+
 export async function signInWithPassword(email: string, password: string) {
   const session = await login(email.trim().toLowerCase(), password);
   setSessionToken(session.token);

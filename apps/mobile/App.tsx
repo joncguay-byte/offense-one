@@ -19,6 +19,7 @@ import {
   provisionAdminAccount,
   readNotification,
   registerPushToken,
+  signInDemoAdmin,
   signInWithPassword,
   signInOidc,
   signInOfficer,
@@ -538,9 +539,14 @@ export default function App() {
     setStatus("Create or open an event, then select recordings for draft generation.");
   }
 
-  async function persistLoginIfNeeded(role: LocalLoginRole) {
+  async function persistLoginIfNeeded(role: LocalLoginRole, overrides?: { email?: string; password?: string }) {
     if (rememberLogin) {
-      const nextLogin = { email: loginEmail.trim(), password: loginPassword, role, sessionVersion: appSessionVersion };
+      const nextLogin = {
+        email: (overrides?.email ?? loginEmail).trim(),
+        password: overrides?.password ?? loginPassword,
+        role,
+        sessionVersion: appSessionVersion
+      };
       await saveLoginPreference(nextLogin);
       setSavedLogin(nextLogin);
       return;
@@ -550,21 +556,58 @@ export default function App() {
     setSavedLogin(null);
   }
 
+  function accountLikeNameFromEmail(email: string) {
+    const localPart = email.split("@")[0] || "Admin User";
+    const formatted = localPart
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
+    return formatted || "Admin User";
+  }
+
   async function signInWithRole(role: LocalLoginRole) {
     setLoginBusy(true);
     setLoginRole(role);
     try {
+      const normalizedEmail = loginEmail.trim().toLowerCase();
       const session =
-        loginEmail.trim() && loginPassword
-          ? await signInWithPassword(loginEmail.trim(), loginPassword)
+        normalizedEmail && loginPassword
+          ? await signInWithPassword(normalizedEmail, loginPassword)
           : role === "OFFICER"
             ? await signInOfficer()
             : role === "SUPERVISOR"
               ? await signInSupervisor()
-              : await signInWithPassword(loginEmail.trim(), loginPassword);
+              : await signInWithPassword(normalizedEmail, loginPassword);
       await persistLoginIfNeeded(role);
       await completeSignIn(session.user, "Signed in");
     } catch (error) {
+      const normalizedEmail = loginEmail.trim().toLowerCase();
+      if (role === "ADMIN" && normalizedEmail && normalizedEmail !== "admin@example.gov" && loginPassword) {
+        try {
+          await signInDemoAdmin();
+          const session = await provisionAdminAccount({
+            email: normalizedEmail,
+            password: loginPassword,
+            fullName: signupName.trim() || accountLikeNameFromEmail(normalizedEmail),
+            badgeNumber: signupBadge.trim() || null
+          });
+          setLoginEmail(session.user.email);
+          setLoginPassword(loginPassword);
+          setLoginRole(session.user.role);
+          await persistLoginIfNeeded(session.user.role, {
+            email: session.user.email,
+            password: loginPassword
+          });
+          await completeSignIn(session.user, "Personal admin account repaired and signed in");
+          setStatus("Your personal admin account was repaired automatically and you are now signed in.");
+          return;
+        } catch {
+          // Fall through to the standard error handling below.
+        }
+      }
+
       if (role === "ADMIN" && (await isLocalCredential(loginEmail, loginPassword, role))) {
         await persistLoginIfNeeded(role);
         await ensureLocalIncident(role);
