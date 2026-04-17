@@ -39,6 +39,8 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
   const [status, setStatus] = useState("Loading saved preferences...");
   const [updateStatus, setUpdateStatus] = useState(Updates.isEnabled ? "Updates are enabled for installed builds." : "Updates are unavailable in Expo Go/dev mode.");
   const [voiceTrainingUri, setVoiceTrainingUri] = useState("");
+  const [voiceTrainingStatus, setVoiceTrainingStatus] = useState("Record a short sample, then save it as your reusable voice model.");
+  const [voiceTrainingBusy, setVoiceTrainingBusy] = useState(false);
 
   useEffect(() => {
     loadRecordingCueSettings()
@@ -51,7 +53,12 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
       });
 
     loadMyVoiceProfile()
-      .then((result) => setHasVoiceProfile(Boolean(result.hasProfile)))
+      .then((result) => {
+        setHasVoiceProfile(Boolean(result.hasProfile));
+        if (result.hasProfile) {
+          setVoiceTrainingStatus("A reusable voice model is already saved for this account.");
+        }
+      })
       .catch(() => undefined);
 
     loadApiBaseUrlPreference()
@@ -167,8 +174,10 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
       await voiceRecorder.prepareToRecordAsync();
       voiceRecorder.record();
       setVoiceTrainingUri("");
+      setVoiceTrainingStatus("Voice training recording in progress. Read the suggested script naturally.");
       setStatus("Voice training recording in progress. Read the suggested script naturally.");
     } catch (error) {
+      setVoiceTrainingStatus(error instanceof Error ? error.message : "Unable to start voice training recording.");
       setStatus(error instanceof Error ? error.message : "Unable to start voice training recording.");
     }
   }
@@ -178,33 +187,45 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
       await voiceRecorder.stop();
       const uri = voiceRecorder.uri || voiceRecorderState.url || "";
       if (!uri) {
+        setVoiceTrainingStatus("Voice training finished, but no file was returned.");
         setStatus("Voice training finished, but no file was returned.");
         return;
       }
       setVoiceTrainingUri(uri);
+      setVoiceTrainingStatus("Voice training sample captured. Tap Save Voice Model to upload it.");
       setStatus("Voice training sample captured. Tap Save Voice Model to train Offense One on your voice.");
     } catch (error) {
+      setVoiceTrainingStatus(error instanceof Error ? error.message : "Unable to stop voice training recording.");
       setStatus(error instanceof Error ? error.message : "Unable to stop voice training recording.");
     }
   }
 
   async function saveVoiceTrainingProfile() {
     if (!currentUser) {
+      setVoiceTrainingStatus("Sign in before training your voice.");
       setStatus("Sign in before training your voice.");
       return;
     }
 
     if (!voiceTrainingUri) {
+      setVoiceTrainingStatus("Record a voice sample first.");
       setStatus("Record a voice sample first.");
       return;
     }
 
     try {
+      setVoiceTrainingBusy(true);
+      setVoiceTrainingStatus("Saving your voice model to the live backend...");
       await saveMyVoiceProfile(voiceTrainingUri);
       setHasVoiceProfile(true);
+      setVoiceTrainingUri("");
+      setVoiceTrainingStatus("Voice model saved. Offense One will use it as your reusable voice reference during draft generation.");
       setStatus("Voice model saved. Offense One will use it as your reusable voice reference during draft generation.");
     } catch (error) {
+      setVoiceTrainingStatus(error instanceof Error ? error.message : "Unable to save your voice model.");
       setStatus(error instanceof Error ? error.message : "Unable to save your voice model.");
+    } finally {
+      setVoiceTrainingBusy(false);
     }
   }
 
@@ -449,9 +470,10 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
         </View>
       </SectionCard>
 
-      <SectionCard title="Train My Voice" subtitle="Save a reusable voice sample so Offense One can better identify you in draft narratives.">
+      <SectionCard title="Train My Voice" subtitle={voiceTrainingStatus}>
         <View style={styles.tagRow}>
           <Tag label={hasVoiceProfile ? "Voice model ready" : "No voice model saved"} tone={hasVoiceProfile ? "success" : "warning"} active />
+          <Tag label={voiceTrainingUri ? "Sample captured" : "No sample captured"} tone={voiceTrainingUri ? "success" : "warning"} active />
         </View>
         <Text style={styles.preferenceValue}>
           Offense One does not require a secret biometric phrase, but it learns better from a clean, consistent sample.
@@ -477,9 +499,9 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
             variant="danger"
           />
           <AppButton
-            label="Save Voice Model"
+            label={voiceTrainingBusy ? "Saving..." : "Save Voice Model"}
             onPress={() => void saveVoiceTrainingProfile()}
-            disabled={!voiceTrainingUri}
+            disabled={!voiceTrainingUri || voiceTrainingBusy}
             variant="primary"
           />
           <AppButton
@@ -488,9 +510,11 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
               void removeMyVoiceProfile()
                 .then(() => {
                   setHasVoiceProfile(false);
+                  setVoiceTrainingStatus("Saved voice profile removed. Record a new sample whenever you are ready.");
                   setStatus("Saved voice profile removed.");
                 })
-                .catch(() => {
+                .catch((error) => {
+                  setVoiceTrainingStatus(error instanceof Error ? error.message : "Unable to delete saved voice profile.");
                   setStatus("Unable to delete saved voice profile.");
                 })
             }
