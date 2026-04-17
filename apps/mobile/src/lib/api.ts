@@ -127,6 +127,18 @@ export function updateMyAccount(payload: {
   });
 }
 
+export function createAdminAccount(payload: {
+  email: string;
+  password: string;
+  fullName: string;
+  badgeNumber?: string | null;
+}) {
+  return request<{ token: string; user: AuthUser }>("/users/admin/accounts", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export type CreateIncidentPayload = {
   caseNumber: string;
   title: string;

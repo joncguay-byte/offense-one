@@ -1,6 +1,7 @@
 import type { DraftNarrativeRequest } from "../lib/shared-types";
 import {
   assignIncidentSupervisor,
+  createAdminAccount,
   createIncident,
   deleteMyVoiceProfile,
   generateIncidentReport,
@@ -114,6 +115,20 @@ export async function saveMyLiveAccount(payload: {
     ...payload,
     email: payload.email.trim().toLowerCase()
   });
+}
+
+export async function provisionAdminAccount(payload: {
+  email: string;
+  password: string;
+  fullName: string;
+  badgeNumber?: string | null;
+}) {
+  const session = await createAdminAccount({
+    ...payload,
+    email: payload.email.trim().toLowerCase()
+  });
+  setSessionToken(session.token);
+  return session;
 }
 
 export async function createIncidentWorkflow(payload: CreateIncidentPayload) {

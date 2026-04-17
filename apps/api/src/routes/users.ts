@@ -4,7 +4,7 @@ import { prisma } from "../db.js";
 import { registerPushToken } from "../services/push.service.js";
 import { persistEvidenceUpload } from "../services/storage.service.js";
 import { upsertVoiceProfile, getVoiceProfile, deleteVoiceProfile } from "../services/voice-profile.service.js";
-import { hashPassword } from "../services/auth.service.js";
+import { createSessionToken, hashPassword } from "../services/auth.service.js";
 
 const registerPushTokenSchema = z.object({
   provider: z.enum(["EXPO", "APNS", "FCM"]),
@@ -12,6 +12,13 @@ const registerPushTokenSchema = z.object({
 });
 
 const updateMyAccountSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  fullName: z.string().min(1),
+  badgeNumber: z.string().trim().nullable().optional()
+});
+
+const createAdminAccountSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   fullName: z.string().min(1),
@@ -78,6 +85,53 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return {
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        fullName: user.fullName,
+        badgeNumber: user.badgeNumber
+      }
+    };
+  });
+
+  app.post("/users/admin/accounts", async (request, reply) => {
+    if (!request.authUser || request.authUser.role !== "ADMIN") {
+      reply.code(403);
+      return { message: "Admin access is required." };
+    }
+
+    const body = createAdminAccountSchema.parse(request.body);
+    const normalizedEmail = normalizeEmail(body.email);
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true }
+    });
+
+    if (existingUser) {
+      reply.code(409);
+      return { message: "An account with that email already exists." };
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        fullName: body.fullName,
+        badgeNumber: body.badgeNumber || null,
+        role: "ADMIN",
+        passwordHash: hashPassword(body.password)
+      }
+    });
+
+    const token = await createSessionToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role
+    });
+
+    reply.code(201);
+    return {
+      token,
       user: {
         id: user.id,
         email: user.email,

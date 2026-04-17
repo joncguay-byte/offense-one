@@ -16,6 +16,7 @@ import {
   loadJobs,
   loadNotifications,
   loadSupervisors,
+  provisionAdminAccount,
   readNotification,
   registerPushToken,
   signInWithPassword,
@@ -661,8 +662,38 @@ export default function App() {
 
   async function handleLocalAccountUpdated(profile: LocalAccountProfile) {
     if (currentUser && !standaloneMode && !currentUser.id.startsWith("local-")) {
+      const normalizedEmail = profile.email.trim().toLowerCase();
+      const isDemoAdminAccount =
+        currentUser.role === "ADMIN" &&
+        currentUser.email.trim().toLowerCase() === "admin@example.gov";
+
+      if (isDemoAdminAccount && normalizedEmail !== "admin@example.gov") {
+        const session = await provisionAdminAccount({
+          email: normalizedEmail,
+          password: profile.password,
+          fullName: profile.fullName,
+          badgeNumber: profile.badgeNumber || null
+        });
+        setCurrentUser(session.user);
+        setLoginEmail(session.user.email);
+        setLoginPassword(profile.password);
+        setLoginRole(session.user.role);
+        if (rememberLogin) {
+          const nextLogin = {
+            email: session.user.email,
+            password: profile.password,
+            role: session.user.role,
+            sessionVersion: appSessionVersion
+          };
+          await saveLoginPreference(nextLogin);
+          setSavedLogin(nextLogin);
+        }
+        setStatus("Personal admin account created on the live backend. You are now signed in with it.");
+        return;
+      }
+
       const result = await saveMyLiveAccount({
-        email: profile.email,
+        email: normalizedEmail,
         password: profile.password,
         fullName: profile.fullName,
         badgeNumber: profile.badgeNumber || null
