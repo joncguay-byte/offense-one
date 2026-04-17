@@ -18,6 +18,10 @@ const updateMyAccountSchema = z.object({
   badgeNumber: z.string().trim().nullable().optional()
 });
 
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
 export const userRoutes: FastifyPluginAsync = async (app) => {
   app.get("/users/supervisors", async () => prisma.user.findMany({
     where: { role: "SUPERVISOR" },
@@ -52,8 +56,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const body = updateMyAccountSchema.parse(request.body);
+    const normalizedEmail = normalizeEmail(body.email);
     const existingUser = await prisma.user.findUnique({
-      where: { email: body.email },
+      where: { email: normalizedEmail },
       select: { id: true }
     });
 
@@ -65,7 +70,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const user = await prisma.user.update({
       where: { id: request.authUser.sub },
       data: {
-        email: body.email,
+        email: normalizedEmail,
         fullName: body.fullName,
         badgeNumber: body.badgeNumber || null,
         passwordHash: hashPassword(body.password)

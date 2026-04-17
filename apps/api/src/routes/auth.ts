@@ -17,6 +17,10 @@ const signupSchema = z.object({
   role: z.enum(["OFFICER", "SUPERVISOR", "ADMIN"]).default("OFFICER")
 });
 
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.post("/auth/signup", async (request, reply) => {
     if (env.AUTH_MODE !== "demo") {
@@ -25,8 +29,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const body = signupSchema.parse(request.body);
+    const normalizedEmail = normalizeEmail(body.email);
     const existingUser = await prisma.user.findUnique({
-      where: { email: body.email }
+      where: { email: normalizedEmail }
     });
 
     if (existingUser) {
@@ -36,7 +41,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const user = await prisma.user.create({
       data: {
-        email: body.email,
+        email: normalizedEmail,
         fullName: body.fullName,
         badgeNumber: body.badgeNumber || null,
         role: body.role,
@@ -70,8 +75,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const body = loginSchema.parse(request.body);
+    const normalizedEmail = normalizeEmail(body.email);
     const user = await prisma.user.findUnique({
-      where: { email: body.email }
+      where: { email: normalizedEmail }
     });
 
     if (!user || !verifyPassword(body.password, user.passwordHash)) {

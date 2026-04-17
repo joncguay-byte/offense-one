@@ -70,7 +70,7 @@ export async function signInOfficer() {
 }
 
 export async function signInWithPassword(email: string, password: string) {
-  const session = await login(email, password);
+  const session = await login(email.trim().toLowerCase(), password);
   setSessionToken(session.token);
   return session;
 }
@@ -82,7 +82,10 @@ export async function signUpWithPassword(payload: {
   badgeNumber?: string | null;
   role: AuthUser["role"];
 }) {
-  const session = await signup(payload);
+  const session = await signup({
+    ...payload,
+    email: payload.email.trim().toLowerCase()
+  });
   setSessionToken(session.token);
   return session;
 }
@@ -107,7 +110,10 @@ export async function saveMyLiveAccount(payload: {
   fullName: string;
   badgeNumber?: string | null;
 }) {
-  return updateMyAccount(payload);
+  return updateMyAccount({
+    ...payload,
+    email: payload.email.trim().toLowerCase()
+  });
 }
 
 export async function createIncidentWorkflow(payload: CreateIncidentPayload) {
