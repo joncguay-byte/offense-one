@@ -19,11 +19,8 @@ import {
   provisionAdminAccount,
   readNotification,
   registerPushToken,
-  signInDemoAdmin,
   signInWithPassword,
   signInOidc,
-  signInOfficer,
-  signInSupervisor,
   signUpWithPassword,
   generateDraftNarrative,
   getJobStatus,
@@ -68,6 +65,7 @@ const RECORDING_INBOX_ID = "recording-inbox";
 
 export default function App() {
   const appSessionVersion = Updates.updateId || Updates.runtimeVersion || Constants.expoConfig?.version || "development";
+  const allowStandaloneMode = __DEV__;
   const [screen, setScreen] = useState<ScreenKey>("recording");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [incidents, setIncidents] = useState<IncidentRecord[]>([]);
@@ -79,13 +77,13 @@ export default function App() {
   const [status, setStatus] = useState("Sign in to begin field capture.");
   const [sessionNotice, setSessionNotice] = useState("");
   const [standaloneMode, setStandaloneMode] = useState(false);
-  const [loginEmail, setLoginEmail] = useState("officer@example.gov");
-  const [loginPassword, setLoginPassword] = useState("ChangeMe123!");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [loginRole, setLoginRole] = useState<LocalLoginRole>("OFFICER");
   const [authMode, setAuthMode] = useState<"signIn" | "signUp">("signIn");
   const [signupName, setSignupName] = useState("");
   const [signupBadge, setSignupBadge] = useState("");
-  const [rememberLogin, setRememberLogin] = useState(true);
+  const [rememberLogin, setRememberLogin] = useState(false);
   const [savedLogin, setSavedLogin] = useState<SavedLogin | null>(null);
   const [localEvidence, setLocalEvidence] = useState<LocalEvidenceRecord[]>([]);
   const [caseNumber, setCaseNumber] = useState("");
@@ -556,59 +554,21 @@ export default function App() {
     setSavedLogin(null);
   }
 
-  function accountLikeNameFromEmail(email: string) {
-    const localPart = email.split("@")[0] || "Admin User";
-    const formatted = localPart
-      .split(/[._-]+/)
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-
-    return formatted || "Admin User";
-  }
-
   async function signInWithRole(role: LocalLoginRole) {
     setLoginBusy(true);
     setLoginRole(role);
     try {
       const normalizedEmail = loginEmail.trim().toLowerCase();
-      const session =
-        normalizedEmail && loginPassword
-          ? await signInWithPassword(normalizedEmail, loginPassword)
-          : role === "OFFICER"
-            ? await signInOfficer()
-            : role === "SUPERVISOR"
-              ? await signInSupervisor()
-              : await signInWithPassword(normalizedEmail, loginPassword);
+      if (!normalizedEmail || !loginPassword) {
+        setStatus("Enter your email and password to sign in.");
+        return;
+      }
+
+      const session = await signInWithPassword(normalizedEmail, loginPassword);
       await persistLoginIfNeeded(role);
       await completeSignIn(session.user, "Signed in");
     } catch (error) {
-      const normalizedEmail = loginEmail.trim().toLowerCase();
-      if (role === "ADMIN" && normalizedEmail && normalizedEmail !== "admin@example.gov" && loginPassword) {
-        try {
-          await signInDemoAdmin();
-          const session = await provisionAdminAccount({
-            email: normalizedEmail,
-            password: loginPassword,
-            fullName: signupName.trim() || accountLikeNameFromEmail(normalizedEmail),
-            badgeNumber: signupBadge.trim() || null
-          });
-          setLoginEmail(session.user.email);
-          setLoginPassword(loginPassword);
-          setLoginRole(session.user.role);
-          await persistLoginIfNeeded(session.user.role, {
-            email: session.user.email,
-            password: loginPassword
-          });
-          await completeSignIn(session.user, "Personal admin account repaired and signed in");
-          setStatus("Your personal admin account was repaired automatically and you are now signed in.");
-          return;
-        } catch {
-          // Fall through to the standard error handling below.
-        }
-      }
-
-      if (role === "ADMIN" && (await isLocalCredential(loginEmail, loginPassword, role))) {
+      if (allowStandaloneMode && role === "ADMIN" && (await isLocalCredential(loginEmail, loginPassword, role))) {
         await persistLoginIfNeeded(role);
         await ensureLocalIncident(role);
         return;
@@ -690,7 +650,7 @@ export default function App() {
         await completeSignIn(session.user, "Signed in");
         return;
       } catch {
-        if (savedLogin.role === "ADMIN" && (await isLocalCredential(savedLogin.email, savedLogin.password, savedLogin.role))) {
+        if (allowStandaloneMode && savedLogin.role === "ADMIN" && (await isLocalCredential(savedLogin.email, savedLogin.password, savedLogin.role))) {
           await ensureLocalIncident(savedLogin.role);
           return;
         }
@@ -788,6 +748,10 @@ export default function App() {
     setNotifications([]);
     setLocalEvidence([]);
     setScreen("recording");
+    setLoginEmail("");
+    setLoginPassword("");
+    setRememberLogin(false);
+    setAuthMode("signIn");
     setSessionNotice("");
     setStatus("Signed out. Enter your email and password to continue.");
   }
@@ -830,7 +794,7 @@ export default function App() {
             const session = await signInWithPassword(login.email, login.password);
             await completeSignIn(session.user, "Signed in");
           } catch {
-            if (login.role === "ADMIN" && (await isLocalCredential(login.email, login.password, login.role))) {
+            if (allowStandaloneMode && login.role === "ADMIN" && (await isLocalCredential(login.email, login.password, login.role))) {
               await ensureLocalIncident(login.role);
               return;
             }

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { env } from "../config.js";
 import { registerPushToken } from "../services/push.service.js";
 import { persistEvidenceUpload } from "../services/storage.service.js";
 import { upsertVoiceProfile, getVoiceProfile, deleteVoiceProfile } from "../services/voice-profile.service.js";
@@ -96,9 +97,13 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post("/users/admin/accounts", async (request, reply) => {
-    if (!request.authUser || request.authUser.role !== "ADMIN") {
+    if (
+      !request.authUser ||
+      request.authUser.role !== "ADMIN" ||
+      request.authUser.email.trim().toLowerCase() !== normalizeEmail(env.DEMO_ADMIN_EMAIL)
+    ) {
       reply.code(403);
-      return { message: "Admin access is required." };
+      return { message: "Only the bootstrap demo admin can create a new personal admin account." };
     }
 
     const body = createAdminAccountSchema.parse(request.body);

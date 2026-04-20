@@ -186,15 +186,17 @@ export async function seedDemoUsers() {
   ];
 
   for (const user of demoUsers) {
-    await prisma.user.upsert({
+    const existingUser = await prisma.user.findUnique({
       where: { email: user.email },
-      update: {
-        fullName: user.fullName,
-        badgeNumber: user.badgeNumber,
-        role: user.role,
-        passwordHash: hashPassword(user.password)
-      },
-      create: {
+      select: { id: true }
+    });
+
+    if (existingUser) {
+      continue;
+    }
+
+    await prisma.user.create({
+      data: {
         email: user.email,
         fullName: user.fullName,
         badgeNumber: user.badgeNumber,

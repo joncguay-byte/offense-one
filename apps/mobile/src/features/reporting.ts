@@ -64,18 +64,6 @@ function inferAudioExtension(pathOrFileName: string) {
   return ".m4a";
 }
 
-export async function signInOfficer() {
-  const session = await login("officer@example.gov", "ChangeMe123!");
-  setSessionToken(session.token);
-  return session;
-}
-
-export async function signInDemoAdmin() {
-  const session = await login("admin@example.gov", "ChangeMe123!");
-  setSessionToken(session.token);
-  return session;
-}
-
 export async function signInWithPassword(email: string, password: string) {
   const session = await login(email.trim().toLowerCase(), password);
   setSessionToken(session.token);
@@ -93,12 +81,6 @@ export async function signUpWithPassword(payload: {
     ...payload,
     email: payload.email.trim().toLowerCase()
   });
-  setSessionToken(session.token);
-  return session;
-}
-
-export async function signInSupervisor() {
-  const session = await login("supervisor@example.gov", "ChangeMe123!");
   setSessionToken(session.token);
   return session;
 }
