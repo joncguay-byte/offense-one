@@ -473,7 +473,17 @@ export default function SettingsScreen({ currentUser, onLocalAccountUpdated, onS
       <SectionCard title="Train My Voice" subtitle={voiceTrainingStatus}>
         <View style={styles.tagRow}>
           <Tag label={hasVoiceProfile ? "Voice model ready" : "No voice model saved"} tone={hasVoiceProfile ? "success" : "warning"} active />
-          <Tag label={voiceTrainingUri ? "Sample captured" : "No sample captured"} tone={voiceTrainingUri ? "success" : "warning"} active />
+          <Tag
+            label={
+              voiceTrainingUri
+                ? "Sample captured"
+                : hasVoiceProfile
+                  ? "Saved model active"
+                  : "No sample captured"
+            }
+            tone={voiceTrainingUri || hasVoiceProfile ? "success" : "warning"}
+            active
+          />
         </View>
         <Text style={styles.preferenceValue}>
           Offense One does not require a secret biometric phrase, but it learns better from a clean, consistent sample.
